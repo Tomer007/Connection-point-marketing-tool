@@ -1,0 +1,6 @@
+{
+  "name": "Viral Cut Extractor",
+  "description": "Extract, validate, score, and rank the most viral 30-second segments from video, audio, or drive links using state-of-the-art AI, and generate professional HTML reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Heebo:wght@300;400;500;700&family=Caveat:wght@400;600&family=Assistant:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-cp-cream: #F6EFE4;
+  --color-cp-sand: #EADFC9;
+  --color-cp-paper: #FBF7EF;
+  --color-cp-bone: #FFFFFF;
+  --color-cp-ink: #2B2A26;
+  --color-cp-ink-2: #5A564E;
+  --color-cp-ink-3: #8C8678;
+  --color-cp-line: #D9CFB9;
+  --color-cp-clay: #C2754B;
+  --color-cp-clay-deep: #9E5A38;
+  --color-cp-sage: #7E8C6A;
+  --color-cp-sage-deep: #5D6B4D;
+  --color-cp-ochre: #D4A24A;
+  --color-cp-rose: #D69A8A;
+  --color-cp-sky: #A9BFC4;
+
+  --font-serif: 'Frank Ruhl Libre', serif;
+  --font-sans: 'Heebo', 'Assistant', sans-serif;
+  --font-script: 'Caveat', cursive;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-cp-cream);
+    color: var(--color-cp-ink);
+    direction: rtl;
+    text-align: right;
+  }
+}
+
