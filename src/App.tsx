@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Scissors,
   PenTool,
+  LogOut,
 } from 'lucide-react';
 import { runViralExtractionPipeline } from './utils/pipeline';
 import { generateHtmlReport } from './utils/reportGenerator';
@@ -31,10 +32,6 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('cp_auth') === 'true');
   const [appTab, setAppTab] = useState<AppTab>('podcast2reels');
 
-  if (!isAuthenticated) {
-    return <LoginPage onLogin={() => setIsAuthenticated(true)} />;
-  }
-
   // Input fields
   const [activeTab, setActiveTab] = useState<'youtube' | 'drive' | 'transcript'>('youtube');
   const [url, setUrl] = useState('');
@@ -47,6 +44,11 @@ export default function App() {
 
   // Refs
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  const handleLogout = () => {
+    localStorage.removeItem('cp_auth');
+    setIsAuthenticated(false);
+  };
 
   // UI state
   const [errorMessage, setErrorMessage] = useState('');
@@ -340,6 +342,10 @@ export default function App() {
     });
   }, [steps, allDone, hasError, isProcessing]);
 
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <div className="min-h-screen bg-cp-cream text-cp-ink flex flex-col selection:bg-cp-clay selection:text-white font-sans">
       {/* Top accent bar */}
@@ -374,6 +380,15 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-full hover:bg-cp-sand border border-transparent hover:border-cp-line transition cursor-pointer"
+              title="התנתק"
+              aria-label="Logout"
+            >
+              <LogOut className="w-4 h-4 text-cp-ink-3" />
+            </button>
           </div>
 
           {/* Capability Tabs */}

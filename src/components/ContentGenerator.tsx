@@ -311,18 +311,24 @@ ${request ? `Additional instructions: ${request}` : ''}`;
         </div>
 
         {/* Tone Selection */}
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="tone-select" className="text-[10px] uppercase text-cp-ink-3 font-semibold tracking-wider">טון ואווירה</label>
-          <select
-            id="tone-select"
-            value={tonePreset}
-            onChange={(e) => setTonePreset(e.target.value)}
-            className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2 text-sm text-cp-ink focus:outline-none focus:border-cp-clay transition cursor-pointer"
-          >
+        <div className="flex flex-col gap-2">
+          <label className="text-[10px] uppercase text-cp-ink-3 font-semibold tracking-wider">טון ואווירה</label>
+          <div className="flex flex-wrap gap-1.5">
             {TONE_PRESETS.map(t => (
-              <option key={t.value} value={t.value}>{t.label}</option>
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => setTonePreset(t.value)}
+                className={`text-[11px] px-3 py-1.5 rounded-full border transition cursor-pointer ${
+                  tonePreset === t.value
+                    ? 'border-cp-clay bg-cp-clay/10 text-cp-clay font-bold'
+                    : 'border-cp-line bg-cp-sand/40 text-cp-ink-2 hover:border-cp-clay/40 hover:text-cp-clay'
+                }`}
+              >
+                {t.label}
+              </button>
             ))}
-          </select>
+          </div>
           {tonePreset === 'custom' && (
             <input type="text" value={customTone} onChange={(e) => setCustomTone(e.target.value)} placeholder="תארו את הטון הרצוי..." className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 transition mt-1" />
           )}

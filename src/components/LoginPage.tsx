@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import logoImg from '../assets/images/anna_yael_logo_1780130406427.png';
 
 interface LoginPageProps {
@@ -7,8 +7,7 @@ interface LoginPageProps {
 }
 
 const VALID_USERS = [
-  { username: 'ana', password: 'זה כבר קרה' },
-  { username: 'yael', password: 'זה כבר קרה' },
+  { username: 'tomergur@gmail.com', password: '1906' },
 ];
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -16,6 +15,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +62,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="ana / yael"
+              placeholder=""
               autoComplete="username"
               className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2.5 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 transition"
             />
@@ -70,15 +70,25 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor="password" className="text-xs font-semibold text-cp-ink-2">סיסמה</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2.5 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 transition"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder=""
+                autoComplete="current-password"
+                className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2.5 text-sm text-cp-ink focus:outline-none focus:border-cp-clay transition pl-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-cp-ink-3 hover:text-cp-clay transition cursor-pointer"
+                aria-label={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {error && (
