@@ -15,6 +15,11 @@ const execFileAsync = promisify(execFile);
 const app = express();
 const PORT = process.env.PORT || process.env.SERVER_PORT || 3001;
 
+// Trust proxy in production (Render uses reverse proxy)
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Request size limit
 app.use(express.json({ limit: '1mb' }));
 
