@@ -23,11 +23,17 @@ import { TranscriptModal } from './components/TranscriptModal';
 import { PipelineProgress } from './components/PipelineProgress';
 import { ViralCutCard } from './components/ViralCutCard';
 import { ContentGenerator } from './components/ContentGenerator';
+import { LoginPage } from './components/LoginPage';
 
 type AppTab = 'podcast2reels' | 'content-generator';
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('cp_auth') === 'true');
   const [appTab, setAppTab] = useState<AppTab>('podcast2reels');
+
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={() => setIsAuthenticated(true)} />;
+  }
 
   // Input fields
   const [activeTab, setActiveTab] = useState<'youtube' | 'drive' | 'transcript'>('youtube');
