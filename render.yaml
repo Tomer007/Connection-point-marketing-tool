@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: connection-point-marketing-tool
+    runtime: node
+    plan: starter
+    buildCommand: npm run render-build
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VITE_ANTHROPIC_API_KEY
+        sync: false
+      - key: VITE_OPENAI_API_KEY
+        sync: false
+      - key: VITE_GROQ_API_KEY
+        sync: false
+      - key: VITE_SERVER_URL
+        value: ""

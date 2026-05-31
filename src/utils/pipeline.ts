@@ -1,40 +1,58 @@
-import { StepState, ViralCut, PipelineResult } from '../types';
+import { StepState, ViralCut, PipelineResult, StepIntermediateData } from '../types';
+import { DEFAULT_PODCAST_NAME } from '../constants';
+import { callServerLlm } from './api';
 
 export interface StepUpdate {
-  (stepId: number, state: StepState, details?: string, intermediateData?: any): void;
+  (stepId: number, state: StepState, details?: string, intermediateData?: StepIntermediateData): void;
 }
 
-// Extract google drive file id
-export function getGoogleDriveId(url: string): string | null {
-  const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/) || url.match(/[?&]id=([a-zA-Z0-9-_]+)/);
-  return match ? match[1] : null;
+interface WhisperSegment {
+  start: number;
+  text: string;
 }
 
 // Helper to clean and parse Claude JSON content
-export function parseClaudeJson(text: string): any[] {
-  // Strip code blocks and outer text
+export function parseClaudeJson(text: string): ViralCut[] {
   let cleanText = text.trim();
-  
-  // If there are markdown backticks, strip them
+
+  // Strip markdown code blocks
   if (cleanText.includes('```')) {
     cleanText = cleanText.replace(/```json|```/gi, '').trim();
   }
-  
+
+  // Try standard parse
   try {
     return JSON.parse(cleanText);
   } catch (err) {
     console.warn("Standard JSON parse failed, trying regex fallback...", err);
-    // Regex fallback to find the first array structure [...]
-    const arrayMatch = cleanText.match(/\[[\s\S]*\]/);
-    if (arrayMatch) {
+  }
+
+  // Regex fallback to find the first array structure [...]
+  const arrayMatch = cleanText.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    try {
+      return JSON.parse(arrayMatch[0]);
+    } catch {
+      // Try to repair truncated JSON by closing open strings/objects
+      let repaired = arrayMatch[0];
+      // Close any unterminated string
+      const openQuotes = (repaired.match(/"/g) || []).length;
+      if (openQuotes % 2 !== 0) repaired += '"';
+      // Close open objects/arrays
+      const openBraces = (repaired.match(/{/g) || []).length - (repaired.match(/}/g) || []).length;
+      const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/]/g) || []).length;
+      for (let i = 0; i < openBraces; i++) repaired += '}';
+      for (let i = 0; i < openBrackets; i++) repaired += ']';
+
       try {
-        return JSON.parse(arrayMatch[0]);
-      } catch (regexErr) {
-        throw new Error("Could not parse AI response as valid JSON array: " + regexErr);
+        return JSON.parse(repaired);
+      } catch (repairErr) {
+        throw new Error("Could not parse AI response as valid JSON array: " + repairErr);
       }
     }
-    throw new Error("Could not find potential JSON array structure inside AI response.");
   }
+
+  throw new Error("Could not find potential JSON array structure inside AI response.");
 }
 
 // Format seconds into MM:SS
@@ -44,115 +62,20 @@ function formatTimestamp(seconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
-// Helper to call Anthropic with OpenAI fallback
-async function callLlm(
-  anthropicKey: string,
-  openaiKey: string | undefined,
-  systemPrompt: string,
-  userMessage: string,
-  maxTokens: number = 3000
-): Promise<string> {
-  // Try Anthropic if provided
-  if (anthropicKey && anthropicKey.trim() !== '') {
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': anthropicKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: maxTokens,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userMessage }]
-        })
-      });
-
-      if (response.ok) {
-        const resData = await response.json();
-        return resData.content[0].text;
-      } else {
-        const errData = await response.json().catch(() => ({}));
-        const rawErrMessage = errData?.error?.message || '';
-        console.warn(`Anthropic Call failed: ${rawErrMessage}. Checking for OpenAI fallback...`);
-        // If OpenAI key is NOT available, throw
-        if (!openaiKey || openaiKey.trim() === '') {
-          if (response.status === 401 || rawErrMessage.toLowerCase().includes('api key') || rawErrMessage.toLowerCase().includes('invalid')) {
-            throw new Error('מפתח ה-API של Anthropic אינו תקין. אנא לחצו על הלוגו בפינה הימנית העליונה של האפליקציה כדי לעדכן אותו. (Anthropic API Key is invalid)');
-          }
-          throw new Error(rawErrMessage || `שגיאה משירות Anthropic: קוד תגובה ${response.status}`);
-        }
-      }
-    } catch (err: any) {
-      console.warn("Anthropic Exception triggered. Checking for OpenAI fallback...", err);
-      if (!openaiKey || openaiKey.trim() === '') {
-        throw err;
-      }
-    }
-  }
-
-  // Fallback to OpenAI
-  if (openaiKey && openaiKey.trim() !== '') {
-    console.log("Using OpenAI GPT-4o as fallback/direct processor.");
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
-        max_tokens: maxTokens,
-        temperature: 0.2
-      })
-    });
-
-    if (!response.ok) {
-      const errJson = await response.json().catch(() => ({}));
-      const rawErr = errJson?.error?.message || `OpenAI API returned status ${response.status}`;
-      if (response.status === 401 || rawErr.toLowerCase().includes('api key') || rawErr.toLowerCase().includes('invalid')) {
-        throw new Error('מפתח ה-API של OpenAI אינו תקין. אנא לחצו על הלוגו בפינה הימנית העליונה של האפליקציה כדי לעדכן אותו. (OpenAI API Key is invalid)');
-      }
-      throw new Error(rawErr);
-    }
-
-    const resData = await response.json();
-    if (resData.choices && resData.choices[0] && resData.choices[0].message) {
-      return resData.choices[0].message.content;
-    } else {
-      throw new Error('תגובה לא פוענחה בהצלחה משירות OpenAI.');
-    }
-  }
-
-  throw new Error('נדרש לפחות מפתח API אחד תקין (Anthropic או OpenAI) לצורך עיבוד ב-LLM.');
-}
-
 export async function runViralExtractionPipeline(
   url: string,
-  groqKey: string,
-  anthropicKey: string,
   onStep: StepUpdate,
   resumeData?: {
     transcript?: string;
-    isSimulated?: boolean;
-    rawCuts?: any[];
+    rawCuts?: ViralCut[];
     validatedCuts?: ViralCut[];
     completedStepsCount?: number;
     podcastName?: string;
     episodeName?: string;
-  },
-  openaiKey?: string
+  }
 ): Promise<PipelineResult> {
   let transcript = '';
-  let isSimulated = false;
-  let podcastName = 'אנה ויעל | נקודת חיבור';
+  let podcastName = DEFAULT_PODCAST_NAME;
   let episodeName = '';
 
   if (resumeData) {
@@ -162,7 +85,9 @@ export async function runViralExtractionPipeline(
 
   // Determine platform based on link
   let platform = 'YouTube';
-  if (url.toLowerCase().includes('spotify')) {
+  if (!url) {
+    platform = 'Transcript';
+  } else if (url.toLowerCase().includes('spotify')) {
     platform = 'Spotify';
   } else if (url.toLowerCase().includes('drive.google.com') || url.toLowerCase().includes('google.com/drive')) {
     platform = 'Google Drive';
@@ -173,113 +98,48 @@ export async function runViralExtractionPipeline(
   // -------------------------------------------------------------
   if (resumeData && resumeData.transcript && resumeData.completedStepsCount && resumeData.completedStepsCount >= 1) {
     transcript = resumeData.transcript;
-    isSimulated = resumeData.isSimulated || false;
-    onStep(1, 'done', 'שוחזר תמלול שמור מהזיכרון המקומי לצורך המשך מהיר של התהליך.', { transcript, isSimulated, podcastName, episodeName });
+    onStep(1, 'done', 'שוחזר תמלול שמור מהזיכרון המקומי לצורך המשך מהיר של התהליך.', { transcript, podcastName, episodeName });
   } else {
     onStep(1, 'active', 'מאתחל את תהליך תמלול השמע...');
     
-    if (groqKey && groqKey.trim() !== '') {
-      try {
-        let fetchUrl = url;
-        if (platform === 'Google Drive') {
-          const fileId = getGoogleDriveId(url);
-          if (fileId) {
-            fetchUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-            onStep(1, 'active', `ממיר קישור גוגל דרייב לקובץ מקור ישיר... מזהה: ${fileId}`);
-          } else {
-            throw new Error('לא ניתן לחלץ מזהה קובץ תקין מקישור הגוגל דרייב.');
-          }
-        }
+    try {
+      onStep(1, 'active', 'שולח את הקישור לשרת הפרוקסי לצורך הורדה ותמלול...');
 
-        onStep(1, 'active', 'מושך נתוני שמע כבלוב בינארי...');
-        // Fetch media
-        const fileResponse = await fetch(fetchUrl);
-        if (!fileResponse.ok) {
-          throw new Error(`שגיאה במשיכת קובץ המדיה מהקישור (${fileResponse.statusText}).`);
-        }
-        const audioBlob = await fileResponse.blob();
+      const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+      const response = await fetch(`${serverUrl}/api/transcribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, platform }),
+      });
 
-        onStep(1, 'active', 'שולח את השמע לשירות Groq Whisper v3 לצורך תמלול...');
-        const formData = new FormData();
-        formData.append('file', audioBlob, 'audio.mp3');
-        formData.append('model', 'whisper-large-v3');
-        formData.append('response_format', 'verbose_json');
-
-        const groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${groqKey}`
-          },
-          body: formData
-        });
-
-        if (!groqResponse.ok) {
-          const errJson = await groqResponse.json().catch(() => ({}));
-          throw new Error(errJson?.error?.message || `שירות ה-API של Groq החזיר קוד שגיאה ${groqResponse.status}`);
-        }
-
-        const groqData = await groqResponse.json();
-        if (groqData.segments && Array.isArray(groqData.segments)) {
-          transcript = groqData.segments
-            .map((seg: any) => `[${formatTimestamp(seg.start)}] ${seg.text}`)
-            .join('\n');
-          onStep(1, 'done', `תומללו בהצלחה ${groqData.segments.length} קטעי שמע באמצעות Groq!`, { transcript, isSimulated: false });
-        } else if (groqData.text) {
-          // Fallback if verbose_json didn't have segments
-          transcript = `[00:00] ${groqData.text}`;
-          onStep(1, 'done', 'הדיבור תומלל כבלוק טקסט בודד באמצעות Groq.', { transcript, isSimulated: false });
-        } else {
-          throw new Error('לא התקבל תמלול תקין משירות Groq.');
-        }
-
-      } catch (err: any) {
-        console.warn('Groq Whisper step failed. Performing fallback transcription via Anthropic Claude simulation...', err);
-        onStep(1, 'active', `שלב תמלול ה-Whisper נכשל: ${err.message || err}. עובר להדמיית תמלול מומחה...`);
-        isSimulated = true;
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData?.error || `שרת הפרוקסי החזיר שגיאה ${response.status}`);
       }
-    } else {
-      onStep(1, 'active', 'לא סופק מפתח Groq. מפעיל הדמיית תמלול מומחה...');
-      isSimulated = true;
-    }
 
-    // If we require simulator fallback
-    if (isSimulated) {
-      try {
-        if (!anthropicKey && (!openaiKey || openaiKey.trim() === '')) {
-          throw new Error('נדרש מפתח API של Anthropic או OpenAI כדי לבצע הדמיית תמלול.');
-        }
-
-        onStep(1, 'active', 'מבצע הדמיית תמלול שיח באמצעות אנה ויעל | נקודת חיבור...');
-        
-        const simulationSystem = `You are a professional podcast transcript simulator.
-Generate a realistic, highly engaging podcast monologue or conversation transcript (approx 1500 to 1800 words) written entirely in HEBREW with timestamps in the format [MM:SS] every 30 seconds (such as [00:00], [00:30], [01:00], etc.).
-The speaker should sound like a leading creative, expert, or high-performance coach discussing actionable and highly engaging and viral discoveries in Hebrew.
-Focus specifically on topics related to the provided source URL contexts if possible, or high impact conversational niches (e.g., neuroscience of attention, cognitive flow, performance habits, communication secrets, or smart wellness protocols).
-
-Strict constraint: Output ONLY the transcripts in HEBREW. Keep timestamps clear, e.g.:
-[00:00] דובר: שלום וברוכים הבאים. היום אנחנו נדבר על הישגי מפתח...
-No surrounding prose, no Markdown wrappers, no introduction codeblocks.`;
-
-        transcript = await callLlm(
-          anthropicKey,
-          openaiKey,
-          simulationSystem,
-          `Please simulate a 2000-word robust transcript for URL: ${url}`,
-          3500
-        );
-
-        onStep(1, 'done', 'הדמיית התמלול המקצועית הושלמה בהצלחה!', { transcript, isSimulated: true });
-      } catch (err: any) {
-        onStep(1, 'error', `הדמיית התמלול נכשלה: ${err.message || err}`);
-        throw err;
+      const transcriptionData = await response.json();
+      if (transcriptionData.segments && Array.isArray(transcriptionData.segments)) {
+        transcript = transcriptionData.segments
+          .map((seg: WhisperSegment) => `[${formatTimestamp(seg.start)}] ${seg.text}`)
+          .join('\n');
+        onStep(1, 'done', `תומללו בהצלחה ${transcriptionData.segments.length} קטעי שמע!`, { transcript });
+      } else if (transcriptionData.text) {
+        transcript = `[00:00] ${transcriptionData.text}`;
+        onStep(1, 'done', 'הדיבור תומלל כבלוק טקסט בודד.', { transcript });
+      } else {
+        throw new Error('לא התקבל תמלול תקין מהשרת.');
       }
+
+    } catch (err: any) {
+      onStep(1, 'error', `תמלול השמע נכשל: ${err.message || err}`);
+      throw new Error(`שגיאה בתמלול השמע: ${err.message || err}`);
     }
   }
 
   // -------------------------------------------------------------
   // STEP 2: EXTRACT 4 VIRAL CUTS
   // -------------------------------------------------------------
-  let rawCuts: any[] = [];
+  let rawCuts: ViralCut[] = [];
   if (resumeData && resumeData.rawCuts && resumeData.completedStepsCount && resumeData.completedStepsCount >= 2) {
     rawCuts = resumeData.rawCuts;
     onStep(2, 'done', 'שוחזרו קטעים גולמיים מהזיכרון המקומי לצורך חיסכון בזמן.', { rawCuts, podcastName, episodeName });
@@ -287,7 +147,7 @@ No surrounding prose, no Markdown wrappers, no introduction codeblocks.`;
     onStep(2, 'active', 'מנתח את התמליל ומחלץ את שם הפודקאסט וכותרת הפרק...');
     
     // Extract podcast name and episode name/title directly from the transcript
-    if ((anthropicKey || openaiKey) && transcript) {
+    if (transcript) {
       try {
         const metadataPrompt = `You are a professional audio content metadata extractor.
 Analyze the provided transcript text (representing the beginning of an audio recording/podcast) and identify/generate:
@@ -301,9 +161,7 @@ Response format: Return ONLY a valid JSON object with these two keys, NO markdow
 }
 `;
 
-        const metaText = await callLlm(
-          anthropicKey,
-          openaiKey,
+        const metaText = await callServerLlm(
           metadataPrompt,
           `Here is the transcript body:\n\n${transcript.substring(0, 6000)}`,
           400
@@ -409,8 +267,13 @@ OUTPUT — raw JSON array only, no markdown, no backticks, no preamble:
     },
     "scoreBreakdown": "9×0.30 + 8×0.25 + 7×0.20 + 8×0.15 + 9×0.10 = 8.3 × 10 = 83 + 5 bonus = 88",
     "viralPotential": 88,
-    "contentManagerNote": "One concrete posting instruction: caption angle, text overlay, CTA, or hashtag strategy (written in Hebrew / הערת אופטימיזציה בעברית)",
-    "captionSuggestion": "A ready-to-post caption for Instagram/TikTok including a hook line and CTA (written in Hebrew / הצעה לכיתוב בעברית)"
+    "contentManagerNote": "Specific visual/editing instruction for THIS clip — not generic (written in Hebrew)",
+    "captionSuggestion": "A FULL ready-to-post Instagram caption in Hebrew. Structure: Line 1 = scroll-stopping hook sentence with emoji. Lines 2-4 = 2-3 short paragraphs giving context about what was said and why it matters (warm, spiritual brand voice). Last paragraph = engagement question ending with 👇. Final line = exactly 5 niche Hebrew hashtags starting with #נקודתחיבור. Total 5-8 lines.",
+    "shotOpening": "Format: 'אנה/יעל: [exact Hebrew quote they say to set up the clip]'. This MUST be what the hosts say BEFORE cutting to the guest. Every clip must open with אנה/יעל speaking first — find their question or setup line from the transcript. Always prefix with the speaker name.",
+    "shotClimax": "Format: 'עמרי: [exact verbatim Hebrew quote]' — the peak emotional moment. Always prefix with the speaker name (עמרי: / אנה: / יעל:). This is the text overlay for the video.",
+    "shotClosing": "Format: 'אנה/יעל: [exact Hebrew quote or action description]'. What the hosts say or do to close the clip. If they speak, include the exact words. If silent reaction, describe it. Always prefix with speaker name.",
+    "publishOrder": 1,
+    "publishNote": "Why this clip should be published in this order relative to others (in Hebrew)"
   }
 ]
 
@@ -421,17 +284,16 @@ RULE 1: Every segment must be exactly 30 seconds. No exceptions.
 RULE 2: No two segments may overlap or be adjacent (minimum 60-second gap between any two cuts).
 RULE 3: Segments with standalone_clarity score below 6 may not rank #1 or #2.
 RULE 4: Show the scoreBreakdown calculation for every cut — no black-box scores.
-RULE 5: captionSuggestion must be under 150 characters and end with a question or CTA.
-RULE 6: Return ONLY the JSON array. No intro text, no summary after the array.`;
+RULE 5: captionSuggestion must be a FULL Instagram caption: hook line + 2-3 context paragraphs + engagement question + 5 hashtags. NOT a single sentence.
+RULE 6: Return ONLY the JSON array. No intro text, no summary after the array.
+RULE 7: Every shotOpening MUST start with "אנה/יעל:" and contain their exact setup question BEFORE the guest speaks. Every shotClimax and shotClosing MUST prefix the speaker name (עמרי: / אנה: / יעל:). The clip ALWAYS opens with the hosts, never the guest directly.`;
 
     const userMsg = transcript.substring(0, 8000);
 
-    const rawText = await callLlm(
-      anthropicKey,
-      openaiKey,
+    const rawText = await callServerLlm(
       extractSystem,
       `Here is the transcript body:\n\n${userMsg}`,
-      3000
+      5000
     );
 
     rawCuts = parseClaudeJson(rawText);
@@ -473,12 +335,10 @@ Review and refine the scores. Add or polish contentManagerNote (string) and capt
 Return the same JSON array (no markdown, no backticks) with updated scores and contentManagerNote/captionSuggestion verified.
 All Hebrew properties must remain fluent natural Hebrew.`;
 
-    const validatedText = await callLlm(
-      anthropicKey,
-      openaiKey,
+    const validatedText = await callServerLlm(
       validateSystem,
       JSON.stringify(rawCuts, null, 2),
-      3500
+      5000
     );
 
     const items = parseClaudeJson(validatedText);
@@ -494,19 +354,24 @@ All Hebrew properties must remain fluent natural Hebrew.`;
         hook: String(item.hook || 'הוק פתיחה קליט ומיידי'),
         whyViral: String(item.whyViral || 'מעורר סקרנות ומציע פתרון מהיר'),
         scores: {
-          authenticity: Number(item.scores?.authenticity || item.scores?.authenticity || 7),
-          engagement: Number(item.scores?.engagement || item.scores?.engagement || 7),
-          emotional_resonance: Number(item.scores?.emotional_resonance || item.scores?.emotional_resonance || 7),
-          actionability: Number(item.scores?.actionability || item.scores?.actionability || 7),
+          authenticity: Number(item.scores?.authenticity || 7),
+          engagement: Number(item.scores?.engagement || 7),
+          emotional_resonance: Number(item.scores?.emotional_resonance || 7),
+          actionability: Number(item.scores?.actionability || 7),
           standalone_clarity: Number(item.scores?.standalone_clarity || 7),
         },
         viralPotential: Number(item.viralPotential || 75),
-        contentManagerNote: String(item.contentManagerNote || 'הגדר כתוביות בולטות וצבעוניות לשמירה על שימור צופים מרבי.'),
+        contentManagerNote: String(item.contentManagerNote || ''),
         openingLine: item.openingLine ? String(item.openingLine) : undefined,
         targetEmotion: item.targetEmotion ? String(item.targetEmotion) : undefined,
         bonusSignals: Array.isArray(item.bonusSignals) ? item.bonusSignals : undefined,
         scoreBreakdown: item.scoreBreakdown ? String(item.scoreBreakdown) : undefined,
-        captionSuggestion: item.captionSuggestion ? String(item.captionSuggestion) : undefined
+        captionSuggestion: item.captionSuggestion ? String(item.captionSuggestion) : undefined,
+        shotOpening: item.shotOpening ? String(item.shotOpening) : undefined,
+        shotClimax: item.shotClimax ? String(item.shotClimax) : undefined,
+        shotClosing: item.shotClosing ? String(item.shotClosing) : undefined,
+        publishOrder: item.publishOrder ? Number(item.publishOrder) : undefined,
+        publishNote: item.publishNote ? String(item.publishNote) : undefined,
       };
     });
 
@@ -554,7 +419,6 @@ All Hebrew properties must remain fluent natural Hebrew.`;
     sourceUrl: url,
     sourcePlatform: platform,
     transcriptLength: transcript.length,
-    isSimulated,
     podcastName,
     episodeName
   };

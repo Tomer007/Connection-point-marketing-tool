@@ -10,11 +10,14 @@ export function generateHtmlReport(
   episodeName?: string
 ): string {
   const checklistItems = [
-    "גזרו את קטעי הוידאו בדיוק לפי חותמות הזמן בדו\"ח.",
-    "הוסיפו כתוביות בולטות וקריאות להגברת המעורבות.",
-    "השתמשו ב\"אסטרטגיית הוק\" כטקסט פותח ב-3 השניות הראשונות.",
-    "שלבו סאונד או מוזיקת רקע טרנדית לשיפור אחוזי החשיפה.",
-    "הוסיפו הנעה ברורה לפעולה (CTA) בסוף הסרטון ובתיאור."
+    `גזרי את קטעי הווידאו בדיוק לפי טיימסטמפים — אל תתחילי באמצע משפט.`,
+    `ודאי שאנה ויעל מופיעות ב-3 השניות הראשונות של כל קליפ — הן המותג.`,
+    `הוסיפי כתוביות לבנות גדולות (28px+) — כל קליפ חייב לעבוד ללא קול.`,
+    `מוזיקה ambient בלבד מתחת לדיבור — max -18dB. אל תסיחי מהתוכן.`,
+    `הוסיפי תגית CTA בסוף כל קליפ: נקודת חיבור | לינק בביו.`,
+    `העתיקי את הקפשן המוכן לכל פוסט — התאימי אמוג'ים לפי טון היום.`,
+    `פרסמי לפי סדר הפרסום המומלץ — 48 שעות בין כל קליפ.`,
+    `ענו לכל תגובה ב-24 השעות הראשונות — זה מה שמזין את האלגוריתם.`,
   ];
 
   const cutsHtml = cuts.map((cut, idx) => {
@@ -88,9 +91,63 @@ export function generateHtmlReport(
               <polyline points="10 9 9 9 8 9"></polyline>
             </svg>
             <div>
-              <strong>מדריך אופטימיזציה למנהלי תוכן:</strong>
+              <strong>טיפ לעריכה:</strong>
               <p>${escapeHtml(cut.contentManagerNote)}</p>
             </div>
+          </div>
+        ` : ''}
+
+        ${(cut.shotOpening || cut.shotClimax || cut.shotClosing) ? `
+          <div class="shot-breakdown">
+            <h4 class="section-title">🎬 פירוק שוטים</h4>
+            <div class="shot-grid">
+              ${cut.shotOpening ? `
+                <div class="shot-block">
+                  <span class="shot-badge" style="background:#C2754B22;color:#C2754B;border:1px solid #C2754B44;">0–5 שניות</span>
+                  <strong class="shot-label">פתיחה</strong>
+                  <p class="shot-text">${escapeHtml(cut.shotOpening)}</p>
+                </div>
+              ` : ''}
+              ${cut.shotClimax ? `
+                <div class="shot-block">
+                  <span class="shot-badge" style="background:#D4A24A22;color:#9E5A38;border:1px solid #D4A24A44;">5–25 שניות</span>
+                  <strong class="shot-label">שיא</strong>
+                  <p class="shot-text">${escapeHtml(cut.shotClimax)}</p>
+                </div>
+              ` : ''}
+              ${cut.shotClosing ? `
+                <div class="shot-block">
+                  <span class="shot-badge" style="background:#7E8C6A22;color:#5D6B4D;border:1px solid #7E8C6A44;">25–30 שניות</span>
+                  <strong class="shot-label">סגירה</strong>
+                  <p class="shot-text">${escapeHtml(cut.shotClosing)}</p>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="subtitle-cards">
+          <h4 class="section-title">📱 3 כרטיסי כתוביות</h4>
+          <div class="subtitle-grid">
+            <div class="subtitle-card">
+              <span class="subtitle-label">כרטיס 1 — Hook</span>
+              <p>${escapeHtml(cut.hook)}</p>
+            </div>
+            <div class="subtitle-card subtitle-card-peak">
+              <span class="subtitle-label">כרטיס 2 — פיק</span>
+              <p>"${escapeHtml(cut.quote)}"</p>
+            </div>
+            <div class="subtitle-card">
+              <span class="subtitle-label">כרטיס 3 — CTA</span>
+              <p>נקודת חיבור | לינק בביו</p>
+            </div>
+          </div>
+        </div>
+
+        ${cut.captionSuggestion ? `
+          <div class="caption-block">
+            <h4 class="section-title">✍️ קפשן מוכן לפרסום</h4>
+            <p class="caption-text">${cut.captionSuggestion.replace(/\n/g, '<br>')}</p>
           </div>
         ` : ''}
       </div>
@@ -477,6 +534,35 @@ export function generateHtmlReport(
       line-height: 1.5;
     }
 
+    /* Shot Breakdown */
+    .shot-breakdown { margin-top: 24px; }
+    .shot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+    .shot-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .shot-badge { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin-bottom: 8px; }
+    .shot-label { display: block; font-size: 0.85rem; color: var(--text); margin-bottom: 6px; }
+    .shot-text { font-size: 0.825rem; color: var(--muted); line-height: 1.5; }
+
+    /* Subtitle Cards */
+    .subtitle-cards { margin-top: 24px; }
+    .subtitle-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+    .subtitle-card { background: #2B2A26; color: #fff; border-radius: 12px; padding: 16px; text-align: center; }
+    .subtitle-card p { font-size: 0.9rem; font-weight: 600; margin-top: 8px; line-height: 1.4; }
+    .subtitle-card-peak { background: var(--accent); }
+    .subtitle-label { font-size: 0.7rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Caption Block */
+    .caption-block { margin-top: 24px; background: rgba(126, 140, 106, 0.08); border: 1px solid rgba(126, 140, 106, 0.25); border-radius: 12px; padding: 20px; }
+    .caption-text { font-size: 0.875rem; line-height: 1.7; color: var(--text); white-space: pre-line; }
+
+    /* Posting Order */
+    .posting-order { margin-bottom: 40px; }
+    .posting-item { display: flex; align-items: center; gap: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; margin-bottom: 10px; }
+    .posting-number { width: 36px; height: 36px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0; }
+    .posting-details { flex: 1; }
+    .posting-details strong { font-size: 0.9rem; display: block; margin-bottom: 4px; }
+    .posting-details p { font-size: 0.8rem; color: var(--muted); margin: 0; }
+    .posting-day { font-size: 0.75rem; font-weight: 700; color: var(--accent); background: rgba(194, 117, 75, 0.1); padding: 4px 10px; border-radius: 20px; white-space: nowrap; }
+
     .checklist-card {
       background-color: var(--card);
       border: 1px solid var(--border);
@@ -569,7 +655,7 @@ export function generateHtmlReport(
       <div class="meta-list">
         <div class="meta-chunk">
           <span>קישור מקור</span>
-          <strong><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceUrl)}</a></strong>
+          <strong>${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceUrl)}</a>` : 'תמלול ידני (ללא קישור)'}</strong>
         </div>
         <div class="meta-chunk">
           <span>פלטפורמה</span>
@@ -586,21 +672,32 @@ export function generateHtmlReport(
       </div>
     </header>
 
-    <h2 class="section-title">🏆 4 קטעי הוידאו המובילים</h2>
+    <h2 class="section-title">🏆 ${cuts.length} קליפי הזהב</h2>
     ${cutsHtml}
 
-    <h2 class="section-title">📋 צ'קליסט מעשי למנהלי תוכן</h2>
+    <h2 class="section-title">📅 סדר פרסום מומלץ</h2>
+    <div class="posting-order">
+      ${cuts.map((cut, idx) => `
+        <div class="posting-item">
+          <div class="posting-number">${idx + 1}</div>
+          <div class="posting-details">
+            <strong>קליפ #${cut.id || idx + 1} — "${escapeHtml(cut.title)}"</strong>
+            <p>${cut.publishNote ? escapeHtml(cut.publishNote) : `פרסמי ${idx === 0 ? 'ראשון — בונה מעורבות ראשונית' : idx === cuts.length - 1 ? 'אחרון — עם CTA ישיר' : '48 שעות אחרי הקודם'}`}</p>
+          </div>
+          <span class="posting-day">יום ${idx * 2 + 1}</span>
+        </div>
+      `).join('')}
+    </div>
+
+    <h2 class="section-title">📋 צ'קליסט ביצוע</h2>
     <div class="checklist-card">
-      <p style="color: var(--muted); margin-bottom: 20px; font-size: 0.925rem; font-weight: 500;">
-        בצעו את הפעולות הבאות שלב אחר שלב כדי לקבל חשיפה מקסימלית באלגוריתמים החברתיים והוורטיקליים (Instagram Reels, TikTok, YouTube Shorts).
-      </p>
       <div class="checklist">
         ${checklistHtml}
       </div>
     </div>
 
     <footer>
-      <p>דו"ח זיקוק רגעים ויראליים • אנה ויעל | נקודת חיבור</p>
+      <p>דו"ח זיקוק ויראלי v2 — משודרג • אנה בן יהודה ויעל רפפורט | נקודת חיבור</p>
     </footer>
   </div>
 </body>

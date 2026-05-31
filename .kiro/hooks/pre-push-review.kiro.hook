@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Senior Code Review Before Push",
+  "description": "Before any shell command that includes 'git push', review the app as a senior frontend and fullstack developer at Google — listing all issues, suggestions, code duplication, and bad practices.",
+  "version": "1",
+  "when": {
+    "type": "preToolUse",
+    "toolTypes": [
+      "shell"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "If this shell command contains 'git push', perform a full code review of the project as a senior frontend and fullstack developer at Google. List all issues, suggestions, code duplication, and bad practices found in the codebase. Read the key source files (src/App.tsx, src/components/*, src/utils/*, src/types.ts, src/constants.ts) and provide a prioritized list of findings. If the command does not contain 'git push', respond with 'Not a push command — no review needed.' and allow the tool to proceed."
+  }
+}

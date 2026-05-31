@@ -31,6 +31,13 @@ export interface ViralCut {
   bonusSignals?: string[];
   scoreBreakdown?: string;
   captionSuggestion?: string;
+  // Shot directions for content editor
+  shotOpening?: string;
+  shotClimax?: string;
+  shotClosing?: string;
+  // Publishing strategy
+  publishOrder?: number;
+  publishNote?: string;
 }
 
 export interface PipelineResult {
@@ -38,7 +45,32 @@ export interface PipelineResult {
   sourceUrl: string;
   sourcePlatform: string;
   transcriptLength?: number;
-  isSimulated?: boolean;
+  podcastName?: string;
+  episodeName?: string;
+}
+
+export interface RecoveryData {
+  transcript?: string;
+  rawCuts?: ViralCut[];
+  validatedCuts?: ViralCut[];
+  podcastName?: string;
+  episodeName?: string;
+}
+
+export interface CachedReport {
+  html: string;
+  result: PipelineResult;
+  timestamp: number;
+  platform: string;
+  title: string;
+  dateString: string;
+  transcript?: string;
+}
+
+export interface StepIntermediateData {
+  transcript?: string;
+  rawCuts?: ViralCut[];
+  validatedCuts?: ViralCut[];
   podcastName?: string;
   episodeName?: string;
 }
