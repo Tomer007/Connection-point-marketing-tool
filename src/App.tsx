@@ -33,9 +33,10 @@ export default function App() {
   const [appTab, setAppTab] = useState<AppTab>('podcast2reels');
 
   // Input fields
-  const [activeTab, setActiveTab] = useState<'youtube' | 'drive' | 'transcript'>('youtube');
+  const [activeTab, setActiveTab] = useState<'youtube' | 'drive' | 'upload' | 'transcript'>('youtube');
   const [url, setUrl] = useState('');
   const [pastedTranscript, setPastedTranscript] = useState('');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [podcastName, setPodcastName] = useState(DEFAULT_PODCAST_NAME);
   const [episodeName, setEpisodeName] = useState('');
   const [isTranscriptModalOpen, setIsTranscriptModalOpen] = useState(false);
@@ -213,6 +214,11 @@ export default function App() {
         setErrorMessage('אנא הדביקו תמלול לפני ההפעלה.');
         return;
       }
+    } else if (activeTab === 'upload') {
+      if (!uploadedFile) {
+        setErrorMessage('אנא העלו קובץ שמע לפני ההפעלה.');
+        return;
+      }
     } else {
       if (!url.trim()) {
         setErrorMessage('אנא הזינו קישור תחילה.');
@@ -233,11 +239,52 @@ export default function App() {
 
     try {
       const completedStepsCount = stepsRef.current.filter(s => s.state === 'done').length;
+
+      // Handle file upload — send directly to server for transcription
+      let resumeDataForPipeline = isResume ? { ...recoveryData, completedStepsCount } :
+        activeTab === 'transcript' ? { transcript: pastedTranscript, completedStepsCount: 1 } : undefined;
+
+      if (activeTab === 'upload' && uploadedFile && !isResume) {
+        // Upload file to server for transcription
+        const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+        const formData = new FormData();
+        formData.append('file', uploadedFile);
+        
+        setConsoleLogs(prev => [...prev, `Uploading ${uploadedFile.name} (${(uploadedFile.size / 1024 / 1024).toFixed(1)}MB)...`]);
+        
+        const uploadResponse = await fetch(`${serverUrl}/api/transcribe-file`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!uploadResponse.ok) {
+          const errData = await uploadResponse.json().catch(() => ({}));
+          const errMsg = errData?.error || 'שגיאה לא ידועה בהעלאת הקובץ';
+          throw new Error(errMsg);
+        }
+
+        const transcriptionData = await uploadResponse.json();
+        let transcript = '';
+        if (transcriptionData.segments && Array.isArray(transcriptionData.segments)) {
+          transcript = transcriptionData.segments
+            .map((seg: { start: number; text: string }) => {
+              const min = Math.floor(seg.start / 60);
+              const sec = Math.floor(seg.start % 60);
+              return `[${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}] ${seg.text}`;
+            })
+            .join('\n');
+        } else if (transcriptionData.text) {
+          transcript = `[00:00] ${transcriptionData.text}`;
+        }
+
+        setConsoleLogs(prev => [...prev, `תמלול הושלם בהצלחה!`]);
+        resumeDataForPipeline = { transcript, completedStepsCount: 1 };
+      }
+
       const result = await runViralExtractionPipeline(
-        activeTab === 'transcript' ? '' : url,
+        activeTab === 'transcript' || activeTab === 'upload' ? '' : url,
         updateStep,
-        isResume ? { ...recoveryData, completedStepsCount } : 
-        activeTab === 'transcript' ? { transcript: pastedTranscript, completedStepsCount: 1 } : undefined
+        resumeDataForPipeline
       );
 
       const extractedPodcast = result.podcastName || DEFAULT_PODCAST_NAME;
@@ -262,7 +309,7 @@ export default function App() {
     } finally {
       setIsProcessing(false);
     }
-  }, [url, recoveryData, updateStep, cacheHtmlReport, activeTab, pastedTranscript]);
+  }, [url, recoveryData, updateStep, cacheHtmlReport, activeTab, pastedTranscript, uploadedFile]);
 
   const handleResume = useCallback(() => {
     setShowResumeBanner(false);
@@ -288,7 +335,8 @@ export default function App() {
         formattedDate, logoBase64,
         currentResult.podcastName || podcastName, currentResult.episodeName || episodeName
       );
-      const filename = `viral_cuts_report_${currentResult.sourcePlatform.toLowerCase().replace(' ', '_')}.html`;
+      const title = currentResult.episodeName || currentResult.podcastName || 'viral-cuts-report';
+      const filename = `${title}.html`;
       downloadBlob(reportHtml, filename);
     } finally {
       setIsDownloading(false);
@@ -314,6 +362,7 @@ export default function App() {
     setCurrentResult(null);
     setUrl('');
     setPastedTranscript('');
+    setUploadedFile(null);
     setRecoveryData({});
     setSteps(INITIAL_STEPS.map(s => ({ ...s })));
     setConsoleLogs([]);
@@ -478,7 +527,7 @@ export default function App() {
               <div>
                 <label className="text-[10px] uppercase text-cp-ink-3 ml-1 block mb-2 font-semibold tracking-wider">בחירת מקור</label>
                 <div className="flex p-1 bg-cp-sand rounded-lg border border-cp-line" role="tablist" aria-label="Source selection">
-                  {(['youtube', 'drive', 'transcript'] as const).map(tab => (
+                  {(['youtube', 'drive', 'upload', 'transcript'] as const).map(tab => (
                     <button
                       key={tab}
                       type="button"
@@ -493,7 +542,7 @@ export default function App() {
                           : 'text-cp-ink-2 hover:text-cp-ink'
                       }`}
                     >
-                      {tab === 'youtube' ? 'YouTube' : tab === 'drive' ? 'Google Drive' : 'תמלול'}
+                      {tab === 'youtube' ? 'YouTube' : tab === 'drive' ? 'Drive' : tab === 'upload' ? 'העלאת קובץ' : 'תמלול'}
                     </button>
                   ))}
                 </div>
@@ -519,6 +568,40 @@ export default function App() {
                       dir="rtl"
                     />
                     <p className="text-[10px] text-cp-ink-3">{pastedTranscript.length > 0 ? `${pastedTranscript.split(/\s+/).length} מילים` : ''}</p>
+                  </>
+                ) : activeTab === 'upload' ? (
+                  <>
+                    <label className="text-[10px] uppercase text-cp-ink-3 ml-1 font-semibold tracking-wider">העלאת קובץ שמע</label>
+                    <div className="border-2 border-dashed border-cp-line rounded-xl p-6 text-center hover:border-cp-clay/40 transition cursor-pointer bg-cp-bone/50"
+                      onClick={() => document.getElementById('file-upload')?.click()}
+                    >
+                      <input
+                        id="file-upload"
+                        type="file"
+                        accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac"
+                        className="hidden"
+                        onChange={(e) => setUploadedFile(e.target.files?.[0] || null)}
+                      />
+                      {uploadedFile ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="text-sm font-medium text-cp-ink">{uploadedFile.name}</span>
+                          <span className="text-[10px] text-cp-ink-3">{(uploadedFile.size / 1024 / 1024).toFixed(1)} MB</span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setUploadedFile(null); }}
+                            className="text-[10px] text-cp-clay hover:text-cp-clay-deep transition cursor-pointer mt-1"
+                          >
+                            הסר קובץ
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="text-2xl">🎵</span>
+                          <span className="text-xs text-cp-ink-2 font-medium">לחצו להעלאת קובץ שמע</span>
+                          <span className="text-[10px] text-cp-ink-3">MP3, WAV, M4A, OGG, FLAC (עד 100MB)</span>
+                        </div>
+                      )}
+                    </div>
                   </>
                 ) : (
                   <>

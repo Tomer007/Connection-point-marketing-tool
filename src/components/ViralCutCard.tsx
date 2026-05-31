@@ -78,11 +78,11 @@ export function ViralCutCard({ cut, index }: ViralCutCardProps) {
       {/* Shot Directions */}
       {(cut.shotOpening || cut.shotClimax || cut.shotClosing) && (
         <div className="mb-4 bg-cp-ochre/5 border border-cp-ochre/20 border-r-4 border-r-cp-ochre rounded-xl p-3.5">
-          <span className="text-[10px] uppercase text-cp-ochre font-bold block mb-2">🎬 הוראות שוט לאיש התוכן</span>
+          <span className="text-[10px] uppercase text-cp-ochre font-bold block mb-2">הוראות שוט לאיש התוכן</span>
           <div className="space-y-1.5 text-xs text-cp-ink-2">
-            {cut.shotOpening && <p><span className="font-bold text-cp-ink">📱 פתיחה:</span> {cut.shotOpening}</p>}
+            {cut.shotOpening && <p><span className="font-bold text-cp-ink">פתיחה:</span> {cut.shotOpening}</p>}
             {cut.shotClimax && <p><span className="font-bold text-cp-ink">⚡ שיא:</span> {cut.shotClimax}</p>}
-            {cut.shotClosing && <p><span className="font-bold text-cp-ink">🎬 סיום:</span> {cut.shotClosing}</p>}
+            {cut.shotClosing && <p><span className="font-bold text-cp-ink">סיום:</span> {cut.shotClosing}</p>}
           </div>
         </div>
       )}
@@ -90,7 +90,7 @@ export function ViralCutCard({ cut, index }: ViralCutCardProps) {
       {/* Ready Caption */}
       {cut.captionSuggestion && (
         <div className="mb-4 bg-cp-sage/5 border border-cp-sage/20 rounded-xl p-3.5">
-          <span className="text-[10px] uppercase text-cp-sage-deep font-bold block mb-1">✍️ קפשן מוכן (העתק-הדבק)</span>
+          <span className="text-[10px] uppercase text-cp-sage-deep font-bold block mb-1">קפשן מוכן (העתק-הדבק)</span>
           <p className="text-xs text-cp-ink leading-relaxed font-medium">{cut.captionSuggestion}</p>
         </div>
       )}
@@ -98,7 +98,7 @@ export function ViralCutCard({ cut, index }: ViralCutCardProps) {
       {/* Publishing Order */}
       {cut.publishOrder && (
         <div className="mb-4 flex items-center gap-2 text-xs text-cp-ink-2">
-          <span className="bg-cp-clay/10 text-cp-clay font-bold px-2 py-0.5 rounded text-[10px]">📅 סדר פרסום: #{cut.publishOrder}</span>
+          <span className="bg-cp-clay/10 text-cp-clay font-bold px-2 py-0.5 rounded text-[10px]">סדר פרסום: #{cut.publishOrder}</span>
           {cut.publishNote && <span>{cut.publishNote}</span>}
         </div>
       )}

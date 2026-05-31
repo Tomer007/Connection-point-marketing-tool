@@ -7,6 +7,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import rateLimit from 'express-rate-limit';
+import multer from 'multer';
 
 dotenv.config();
 
@@ -169,8 +170,16 @@ async function transcribeWithGroq(audioBuffer: Buffer): Promise<unknown> {
   const groqKey = process.env.VITE_GROQ_API_KEY;
   if (!groqKey) throw new Error('VITE_GROQ_API_KEY not configured.');
 
+  // If file > 24MB, compress it with ffmpeg first
+  let finalBuffer = audioBuffer;
+  if (audioBuffer.length > 24 * 1024 * 1024) {
+    console.log(`[Groq] File is ${(audioBuffer.length / 1024 / 1024).toFixed(1)}MB — compressing with ffmpeg...`);
+    finalBuffer = await compressAudio(audioBuffer);
+    console.log(`[Groq] Compressed to ${(finalBuffer.length / 1024 / 1024).toFixed(1)}MB`);
+  }
+
   const formData = new FormData();
-  formData.append('file', new Blob([audioBuffer], { type: 'audio/mpeg' }), 'audio.mp3');
+  formData.append('file', new Blob([finalBuffer], { type: 'audio/mpeg' }), 'audio.mp3');
   formData.append('model', 'whisper-large-v3');
   formData.append('response_format', 'verbose_json');
 
@@ -188,9 +197,75 @@ async function transcribeWithGroq(audioBuffer: Buffer): Promise<unknown> {
   return response.json();
 }
 
+// --- Helper: Compress audio with ffmpeg (64kbps mono MP3) ---
+async function compressAudio(inputBuffer: Buffer): Promise<Buffer> {
+  const inputPath = join(tmpdir(), `input-${randomUUID()}.mp3`);
+  const outputPath = join(tmpdir(), `compressed-${randomUUID()}.mp3`);
+
+  try {
+    const { writeFile } = await import('fs/promises');
+    await writeFile(inputPath, inputBuffer);
+
+    await execFileAsync('ffmpeg', [
+      '-i', inputPath,
+      '-ac', '1',           // mono
+      '-ar', '16000',       // 16kHz sample rate (optimal for speech)
+      '-b:a', '64k',        // 64kbps bitrate
+      '-y',                 // overwrite
+      outputPath,
+    ], { timeout: 120_000 });
+
+    const compressed = await readFile(outputPath);
+    return compressed;
+  } finally {
+    await unlink(inputPath).catch(() => {});
+    await unlink(outputPath).catch(() => {});
+  }
+}
+
+// File upload config (max 100MB)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+
 // ============================================================
 // ROUTES
 // ============================================================
+
+/** POST /api/transcribe-file — Upload audio file + transcribe via Groq */
+app.post('/api/transcribe-file', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        res.status(413).json({ error: 'הקובץ גדול מדי. הגודל המקסימלי הוא 100MB.' });
+        return;
+      }
+      res.status(400).json({ error: `שגיאה בהעלאת הקובץ: ${err.message}` });
+      return;
+    }
+    next();
+  });
+}, async (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: 'לא התקבל קובץ. אנא העלו קובץ שמע.' });
+    return;
+  }
+
+  const groqKey = process.env.VITE_GROQ_API_KEY;
+  if (!groqKey) {
+    res.status(500).json({ error: 'מפתח Groq לא הוגדר בשרת. יש להגדיר VITE_GROQ_API_KEY.' });
+    return;
+  }
+
+  try {
+    console.log(`[Upload] Received ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(1)}MB)`);
+    const result = await transcribeWithGroq(req.file.buffer);
+    console.log(`[Upload] Transcription complete.`);
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'שגיאה בתמלול הקובץ.';
+    console.error('[transcribe-file error]:', message);
+    res.status(502).json({ error: message });
+  }
+});
 
 /** POST /api/transcribe — Download audio + transcribe via Groq */
 app.post('/api/transcribe', async (req, res) => {

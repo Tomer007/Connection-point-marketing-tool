@@ -99,7 +99,7 @@ export function generateHtmlReport(
 
         ${(cut.shotOpening || cut.shotClimax || cut.shotClosing) ? `
           <div class="shot-breakdown">
-            <h4 class="section-title">🎬 פירוק שוטים</h4>
+            <h4 class="section-title">פירוק שוטים</h4>
             <div class="shot-grid">
               ${cut.shotOpening ? `
                 <div class="shot-block">
@@ -127,7 +127,7 @@ export function generateHtmlReport(
         ` : ''}
 
         <div class="subtitle-cards">
-          <h4 class="section-title">📱 3 כרטיסי כתוביות</h4>
+          <h4 class="section-title">3 כרטיסי כתוביות</h4>
           <div class="subtitle-grid">
             <div class="subtitle-card">
               <span class="subtitle-label">כרטיס 1 — Hook</span>
@@ -146,7 +146,7 @@ export function generateHtmlReport(
 
         ${cut.captionSuggestion ? `
           <div class="caption-block">
-            <h4 class="section-title">✍️ קפשן מוכן לפרסום</h4>
+            <h4 class="section-title">קפשן מוכן לפרסום</h4>
             <p class="caption-text">${cut.captionSuggestion.replace(/\n/g, '<br>')}</p>
           </div>
         ` : ''}
@@ -672,10 +672,10 @@ export function generateHtmlReport(
       </div>
     </header>
 
-    <h2 class="section-title">🏆 ${cuts.length} קליפי הזהב</h2>
+    <h2 class="section-title">${cuts.length} קליפי הזהב</h2>
     ${cutsHtml}
 
-    <h2 class="section-title">📅 סדר פרסום מומלץ</h2>
+    <h2 class="section-title">סדר פרסום מומלץ</h2>
     <div class="posting-order">
       ${cuts.map((cut, idx) => `
         <div class="posting-item">
@@ -689,7 +689,7 @@ export function generateHtmlReport(
       `).join('')}
     </div>
 
-    <h2 class="section-title">📋 צ'קליסט ביצוע</h2>
+    <h2 class="section-title">צ'קליסט ביצוע</h2>
     <div class="checklist-card">
       <div class="checklist">
         ${checklistHtml}
