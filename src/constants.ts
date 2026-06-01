@@ -4,6 +4,7 @@ import { PipelineStep } from './types';
 export const STORAGE_KEYS = {
   RECOVERY_PAYLOAD: 'vce_recovery_payload',
   REPORT_CACHE_PREFIX: 'vce_report_cache_',
+  TRANSCRIPT_CACHE_PREFIX: 'vce_transcript_cache_',
 } as const;
 
 // Cache duration: 48 hours in milliseconds

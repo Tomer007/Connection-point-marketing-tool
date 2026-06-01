@@ -37,6 +37,7 @@ export default function App() {
   const [url, setUrl] = useState('');
   const [pastedTranscript, setPastedTranscript] = useState('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [userComments, setUserComments] = useState('');
   const [podcastName, setPodcastName] = useState(DEFAULT_PODCAST_NAME);
   const [episodeName, setEpisodeName] = useState('');
   const [isTranscriptModalOpen, setIsTranscriptModalOpen] = useState(false);
@@ -68,6 +69,9 @@ export default function App() {
   // Ref for current steps to avoid stale closures
   const stepsRef = useRef(steps);
   stepsRef.current = steps;
+
+  // Ref to capture transcript during pipeline execution
+  const latestTranscriptRef = useRef<string | undefined>(undefined);
 
   // Update a single step status — uses functional updates to avoid stale closures
   const updateStep = useCallback((
@@ -102,6 +106,7 @@ export default function App() {
       if (state === 'done' && intermediateData) {
         if (stepId === 1) {
           next.transcript = intermediateData.transcript;
+          latestTranscriptRef.current = intermediateData.transcript;
         } else if (stepId === 2) {
           next.rawCuts = intermediateData.rawCuts;
         } else if (stepId === 3) {
@@ -173,7 +178,7 @@ export default function App() {
   useEffect(() => {
     try {
       Object.keys(localStorage).forEach(key => {
-        if (key.startsWith(STORAGE_KEYS.REPORT_CACHE_PREFIX)) {
+        if (key.startsWith(STORAGE_KEYS.REPORT_CACHE_PREFIX) || key.startsWith(STORAGE_KEYS.TRANSCRIPT_CACHE_PREFIX)) {
           const cached = localStorage.getItem(key);
           if (cached) {
             const parsed = JSON.parse(cached);
@@ -181,7 +186,7 @@ export default function App() {
           }
         }
       });
-    } catch (e) { console.warn('Failed to clean up old report cache', e); }
+    } catch (e) { console.warn('Failed to clean up old cache', e); }
   }, []);
 
   // Cache HTML report
@@ -245,46 +250,86 @@ export default function App() {
         activeTab === 'transcript' ? { transcript: pastedTranscript, completedStepsCount: 1 } : undefined;
 
       if (activeTab === 'upload' && uploadedFile && !isResume) {
-        // Upload file to server for transcription
-        const serverUrl = import.meta.env.VITE_SERVER_URL || '';
-        const formData = new FormData();
-        formData.append('file', uploadedFile);
+        // Check transcript cache for this file (keyed by name + size)
+        const fileCacheKey = `${STORAGE_KEYS.TRANSCRIPT_CACHE_PREFIX}file_${uploadedFile.name}_${uploadedFile.size}`;
+        const cachedTranscript = localStorage.getItem(fileCacheKey);
         
-        setConsoleLogs(prev => [...prev, `Uploading ${uploadedFile.name} (${(uploadedFile.size / 1024 / 1024).toFixed(1)}MB)...`]);
-        
-        const uploadResponse = await fetch(`${serverUrl}/api/transcribe-file`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!uploadResponse.ok) {
-          const errData = await uploadResponse.json().catch(() => ({}));
-          const errMsg = errData?.error || 'שגיאה לא ידועה בהעלאת הקובץ';
-          throw new Error(errMsg);
+        if (cachedTranscript) {
+          try {
+            const cached = JSON.parse(cachedTranscript);
+            if (cached.transcript && Date.now() - cached.timestamp <= CACHE_TTL_MS) {
+              setConsoleLogs(prev => [...prev, `📋 נמצא תמלול שמור עבור "${uploadedFile.name}" — משתמש בתמלול מהמטמון (חוסך קריאה ל-Groq)`]);
+              resumeDataForPipeline = { transcript: cached.transcript, completedStepsCount: 1 };
+            } else {
+              localStorage.removeItem(fileCacheKey);
+            }
+          } catch { /* ignore parse errors */ }
         }
 
-        const transcriptionData = await uploadResponse.json();
-        let transcript = '';
-        if (transcriptionData.segments && Array.isArray(transcriptionData.segments)) {
-          transcript = transcriptionData.segments
-            .map((seg: { start: number; text: string }) => {
-              const min = Math.floor(seg.start / 60);
-              const sec = Math.floor(seg.start % 60);
-              return `[${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}] ${seg.text}`;
-            })
-            .join('\n');
-        } else if (transcriptionData.text) {
-          transcript = `[00:00] ${transcriptionData.text}`;
-        }
+        if (!resumeDataForPipeline) {
+          // Upload file to server for transcription
+          const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+          const formData = new FormData();
+          formData.append('file', uploadedFile);
+          
+          setConsoleLogs(prev => [...prev, `Uploading ${uploadedFile.name} (${(uploadedFile.size / 1024 / 1024).toFixed(1)}MB)...`]);
+          
+          const uploadResponse = await fetch(`${serverUrl}/api/transcribe-file`, {
+            method: 'POST',
+            body: formData,
+          });
 
-        setConsoleLogs(prev => [...prev, `תמלול הושלם בהצלחה!`]);
-        resumeDataForPipeline = { transcript, completedStepsCount: 1 };
+          if (!uploadResponse.ok) {
+            const errData = await uploadResponse.json().catch(() => ({}));
+            const errMsg = errData?.error || 'שגיאה לא ידועה בהעלאת הקובץ';
+            throw new Error(errMsg);
+          }
+
+          const transcriptionData = await uploadResponse.json();
+          let transcript = '';
+          if (transcriptionData.segments && Array.isArray(transcriptionData.segments)) {
+            transcript = transcriptionData.segments
+              .map((seg: { start: number; text: string }) => {
+                const min = Math.floor(seg.start / 60);
+                const sec = Math.floor(seg.start % 60);
+                return `[${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}] ${seg.text}`;
+              })
+              .join('\n');
+          } else if (transcriptionData.text) {
+            transcript = `[00:00] ${transcriptionData.text}`;
+          }
+
+          // Cache the transcript for future use
+          try {
+            localStorage.setItem(fileCacheKey, JSON.stringify({ transcript, timestamp: Date.now() }));
+          } catch (e) { console.warn('Failed to cache transcript', e); }
+
+          setConsoleLogs(prev => [...prev, `תמלול הושלם בהצלחה! (נשמר במטמון לשימוש חוזר)`]);
+          resumeDataForPipeline = { transcript, completedStepsCount: 1 };
+        }
+      } else if ((activeTab === 'youtube' || activeTab === 'drive') && url.trim() && !isResume) {
+        // Check transcript cache for URL
+        const urlCacheKey = `${STORAGE_KEYS.TRANSCRIPT_CACHE_PREFIX}url_${url.trim()}`;
+        const cachedTranscript = localStorage.getItem(urlCacheKey);
+        
+        if (cachedTranscript) {
+          try {
+            const cached = JSON.parse(cachedTranscript);
+            if (cached.transcript && Date.now() - cached.timestamp <= CACHE_TTL_MS) {
+              setConsoleLogs(prev => [...prev, `📋 נמצא תמלול שמור עבור הקישור — משתמש בתמלול מהמטמון (חוסך קריאה ל-Groq)`]);
+              resumeDataForPipeline = { transcript: cached.transcript, completedStepsCount: 1 };
+            } else {
+              localStorage.removeItem(urlCacheKey);
+            }
+          } catch { /* ignore parse errors */ }
+        }
       }
 
       const result = await runViralExtractionPipeline(
         activeTab === 'transcript' || activeTab === 'upload' ? '' : url,
         updateStep,
-        resumeDataForPipeline
+        resumeDataForPipeline,
+        userComments.trim() || undefined
       );
 
       const extractedPodcast = result.podcastName || DEFAULT_PODCAST_NAME;
@@ -302,6 +347,17 @@ export default function App() {
       setConsoleLogs(prev => [...prev, '✓ Pipeline completed successfully.']);
       localStorage.removeItem(STORAGE_KEYS.RECOVERY_PAYLOAD);
       await cacheHtmlReport(enrichedResult);
+
+      // Cache the transcript for URL-based sources (so we don't re-transcribe)
+      if ((activeTab === 'youtube' || activeTab === 'drive') && url.trim()) {
+        try {
+          const transcriptToCache = latestTranscriptRef.current;
+          if (transcriptToCache) {
+            const urlCacheKey = `${STORAGE_KEYS.TRANSCRIPT_CACHE_PREFIX}url_${url.trim()}`;
+            localStorage.setItem(urlCacheKey, JSON.stringify({ transcript: transcriptToCache, timestamp: Date.now() }));
+          }
+        } catch (e) { console.warn('Failed to cache URL transcript', e); }
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'An error occurred during extraction.';
       setErrorMessage(message);
@@ -363,6 +419,7 @@ export default function App() {
     setUrl('');
     setPastedTranscript('');
     setUploadedFile(null);
+    setUserComments('');
     setRecoveryData({});
     setSteps(INITIAL_STEPS.map(s => ({ ...s })));
     setConsoleLogs([]);
@@ -517,7 +574,10 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
           {/* Left Panel: Config & Input */}
           <div className="lg:col-span-2 flex flex-col gap-6">
-            <div className="bg-cp-paper border border-cp-line rounded-2xl p-6 shadow-sm flex flex-col gap-5">
+            <form
+              className="bg-cp-paper border border-cp-line rounded-2xl p-6 shadow-sm flex flex-col gap-5"
+              onSubmit={(e) => { e.preventDefault(); if (!isProcessing) handleStartPipeline(false); }}
+            >
               <h3 className="text-lg font-bold text-cp-ink font-serif flex items-center gap-2">
                 <Video className="w-5 h-5 text-cp-clay" />
                 <span>הגדרות מקור ומדיה</span>
@@ -623,6 +683,25 @@ export default function App() {
                 )}
               </div>
 
+              {/* User Comments */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="user-comments" className="text-[10px] uppercase text-cp-ink-3 ml-1 font-semibold tracking-wider">הערות והנחיות (אופציונלי)</label>
+                  {userComments && (
+                    <button onClick={() => setUserComments('')} className="text-[10px] text-cp-ink-3 hover:text-cp-clay transition cursor-pointer">נקה</button>
+                  )}
+                </div>
+                <textarea
+                  id="user-comments"
+                  value={userComments}
+                  onChange={(e) => setUserComments(e.target.value)}
+                  placeholder="הוסיפו הערות או הנחיות לחילוץ, למשל: &#10;• התמקדו ברגעים עם עמרי&#10;• חפשו קטעים על בריאות&#10;• העדיפו רגעים רגשיים"
+                  rows={3}
+                  className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 font-medium transition resize-y min-h-[70px]"
+                  dir="rtl"
+                />
+              </div>
+
               {/* Cached report notice */}
               {cachedReportForUrl && !currentResult && !isProcessing && (
                 <div className="bg-cp-sage/10 border border-cp-sage/25 p-4 rounded-xl flex flex-col gap-3 text-xs text-cp-ink" dir="rtl">
@@ -648,8 +727,7 @@ export default function App() {
 
               {/* Extract Button */}
               <button
-                type="button"
-                onClick={() => handleStartPipeline(false)}
+                type="submit"
                 disabled={isProcessing}
                 className="w-full bg-cp-clay hover:bg-cp-clay-deep text-white font-semibold py-3 px-4 rounded-full transition-all flex items-center justify-center space-x-2 text-sm disabled:opacity-50 cursor-pointer shadow-md hover:shadow-lg active:scale-98"
               >
@@ -672,7 +750,7 @@ export default function App() {
                   </div>
                 )}
               </div>
-            </div>
+            </form>
           </div>
 
           {/* Right Panel: Progress & Results */}

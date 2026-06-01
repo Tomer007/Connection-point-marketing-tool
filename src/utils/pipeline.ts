@@ -72,7 +72,8 @@ export async function runViralExtractionPipeline(
     completedStepsCount?: number;
     podcastName?: string;
     episodeName?: string;
-  }
+  },
+  userComments?: string
 ): Promise<PipelineResult> {
   let transcript = '';
   let podcastName = DEFAULT_PODCAST_NAME;
@@ -190,9 +191,52 @@ Response format: Return ONLY a valid JSON object with these two keys, NO markdow
     onStep(2, 'active', `שם פודקאסט זוהה: "${podcastName}". כותרת הפרק שחולצה: "${episodeName || 'לא זוהה'}". מחלץ כעת 4 קטעים מועמדים...`, { podcastName, episodeName });
     
     try {
-    const extractSystem = `You are a world-class viral content strategist with 10+ years extracting short-form clips from long-form health & wellness podcasts. You have a proven track record of identifying the exact moments that generate millions of views on TikTok, Instagram Reels, and YouTube Shorts.
+    const extractSystem = `You are a world-class viral content strategist specializing in spiritual, wellness, and personal development short-form content for Instagram Reels, TikTok, and YouTube Shorts.
+
+BRAND: נקודת חיבור | Connection Point
+HOSTS: אנה בן יהודה ויעל רפפורט
+TARGET AUDIENCE: גילאי 25-50, אנשים שמתפתחים, עוברים שינויים, רוצים חיים מלאים, בריאת מציאות, אנשי רוח, מחפשי משמעות.
 
 Your mission: analyze the transcript below and extract the 4 segments with the highest viral potential — each exactly 30 seconds long — that can stand completely alone as short-form clips.
+
+---
+
+9 VIRAL PRINCIPLES — APPLY ALL TO EVERY CUT:
+
+1. ההוק (2 השניות הראשונות) — 80% מההצלחה
+פנייה ישירה בגוף יחיד: "את/אתה", לא "אתם". אבחני רגש שהצופה כבר מרגיש, אל תכריזי על נושא. "נראה לי שאת..." עובד; "היום נדבר על..." מת. הגיעי למסר תוך שנייה-שתיים.
+
+2. שיתוף פעיל — מייצר תגובות
+בקשי מהצופה לעשות משהו: לחזור אחרייך, לנשום, לכתוב מילה. סיימי בהזמנה לתגובה ספציפית: "כתבי לי 'אני בוחרת בחיבור'". תגובות = הסיגנל החזק ביותר באלגוריתם.
+
+3. בנויה להישמר ולהישלח
+תוכן שאפשר לחזור אליו (מדיטציה, תרגיל, משפט מחזק) נשמר. תוכן שמתאר תחושה שקשה לבטא נשלח לחבר/ה. שמירות ושיתופים שווים יותר מלייקים.
+
+4. עובד גם בלי סאונד
+כתוביות על המסך תמיד. רוב הגלילה היא בהשתקה, והכתוביות מחזיקות את הצופה.
+
+5. זמן צפייה וצפייה חוזרת (watch-through)
+אורך קצר וקצבי. הלולאה הקצרה שנצפית פעמיים מנצחת את הסרטון הארוך שננטש באמצע.
+
+6. סגירה רגשית
+סיימי בנתינה בלי בקשה — "הכל בחינם", "אני אוהבת אותך". בונה אמון, מחזיר אנשים, ומזמין מעקב.
+
+7. אסתטיקה שתואמת את המסר
+סביבה רגועה, אור טבעי, פריים נקי. הוויזואל צריך לשדר את התחושה שאת מבטיחה.
+
+8. נושא צר-אך-אוניברסלי
+כווני לכאב שכמעט כולם מרגישים (בדידות, ניתוק, עומס), בזווית הספציפית שלך. קהל פוטנציאלי עצום אבל המסר עדיין אישי.
+
+9. עקביות
+פרסום קבוע מאמן את האלגוריתם ובונה היסטוריה של ביצועים.
+
+---
+
+WHAT MAKES A MOMENT VIRAL IN THIS NICHE:
+- רגעים מרגשים בפודקאסט שנוגעים בלב
+- גורמים לאנשים להרגיש שייכות
+- מקבלים ערך וכלים לחיים
+- פנייה אישית (את/אתה) לא כללית
 
 ---
 
@@ -286,13 +330,14 @@ RULE 3: Segments with standalone_clarity score below 6 may not rank #1 or #2.
 RULE 4: Show the scoreBreakdown calculation for every cut — no black-box scores.
 RULE 5: captionSuggestion must be a FULL Instagram caption: hook line + 2-3 context paragraphs + engagement question + 5 hashtags. NOT a single sentence.
 RULE 6: Return ONLY the JSON array. No intro text, no summary after the array.
-RULE 7: Every shotOpening MUST start with "אנה/יעל:" and contain their exact setup question BEFORE the guest speaks. Every shotClimax and shotClosing MUST prefix the speaker name (עמרי: / אנה: / יעל:). The clip ALWAYS opens with the hosts, never the guest directly.`;
+RULE 7: Every shotOpening MUST start with "אנה/יעל:" and contain their exact setup question BEFORE the guest speaks. Every shotClimax and shotClosing MUST prefix the speaker name (עמרי: / אנה: / יעל:). The clip ALWAYS opens with the hosts, never the guest directly.
+RULE 8: If the user provided additional instructions or comments (appearing before the transcript), prioritize and incorporate them into your selection criteria. For example, if they ask to focus on a specific speaker or topic, weight those moments higher.`;
 
     const userMsg = transcript.substring(0, 8000);
 
     const rawText = await callServerLlm(
       extractSystem,
-      `Here is the transcript body:\n\n${userMsg}`,
+      `${userComments ? `USER INSTRUCTIONS / הנחיות המשתמש:\n${userComments}\n\n---\n\n` : ''}Here is the transcript body:\n\n${userMsg}`,
       5000
     );
 
