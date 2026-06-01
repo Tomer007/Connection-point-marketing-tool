@@ -165,33 +165,33 @@ async function downloadGoogleDriveAudio(url: string): Promise<Buffer> {
   return Buffer.from(await response.arrayBuffer());
 }
 
-// --- Helper: Transcribe with Groq ---
-async function transcribeWithGroq(audioBuffer: Buffer): Promise<unknown> {
-  const groqKey = process.env.VITE_GROQ_API_KEY;
-  if (!groqKey) throw new Error('VITE_GROQ_API_KEY not configured.');
+// --- Helper: Transcribe with OpenAI Whisper ---
+async function transcribeWithWhisper(audioBuffer: Buffer): Promise<unknown> {
+  const openaiKey = process.env.VITE_OPENAI_API_KEY;
+  if (!openaiKey) throw new Error('VITE_OPENAI_API_KEY not configured for transcription.');
 
   // If file > 24MB, compress it with ffmpeg first
   let finalBuffer = audioBuffer;
   if (audioBuffer.length > 24 * 1024 * 1024) {
-    console.log(`[Groq] File is ${(audioBuffer.length / 1024 / 1024).toFixed(1)}MB — compressing with ffmpeg...`);
+    console.log(`[Whisper] File is ${(audioBuffer.length / 1024 / 1024).toFixed(1)}MB — compressing with ffmpeg...`);
     finalBuffer = await compressAudio(audioBuffer);
-    console.log(`[Groq] Compressed to ${(finalBuffer.length / 1024 / 1024).toFixed(1)}MB`);
+    console.log(`[Whisper] Compressed to ${(finalBuffer.length / 1024 / 1024).toFixed(1)}MB`);
   }
 
   const formData = new FormData();
   formData.append('file', new Blob([finalBuffer], { type: 'audio/mpeg' }), 'audio.mp3');
-  formData.append('model', 'whisper-large-v3');
+  formData.append('model', 'whisper-1');
   formData.append('response_format', 'verbose_json');
 
-  const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${groqKey}` },
+    headers: { 'Authorization': `Bearer ${openaiKey}` },
     body: formData,
   });
 
   if (!response.ok) {
     const errJson = await response.json().catch(() => ({}));
-    throw new Error(errJson?.error?.message || `Groq API returned ${response.status}`);
+    throw new Error(errJson?.error?.message || `OpenAI Whisper API returned ${response.status}`);
   }
 
   return response.json();
@@ -230,7 +230,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100
 // ROUTES
 // ============================================================
 
-/** POST /api/transcribe-file — Upload audio file + transcribe via Groq */
+/** POST /api/transcribe-file — Upload audio file + transcribe via OpenAI Whisper */
 app.post('/api/transcribe-file', (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
@@ -249,15 +249,15 @@ app.post('/api/transcribe-file', (req, res, next) => {
     return;
   }
 
-  const groqKey = process.env.VITE_GROQ_API_KEY;
-  if (!groqKey) {
-    res.status(500).json({ error: 'מפתח Groq לא הוגדר בשרת. יש להגדיר VITE_GROQ_API_KEY.' });
+  const openaiKey = process.env.VITE_OPENAI_API_KEY;
+  if (!openaiKey) {
+    res.status(500).json({ error: 'מפתח OpenAI לא הוגדר בשרת. יש להגדיר VITE_OPENAI_API_KEY.' });
     return;
   }
 
   try {
     console.log(`[Upload] Received ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(1)}MB)`);
-    const result = await transcribeWithGroq(req.file.buffer);
+    const result = await transcribeWithWhisper(req.file.buffer);
     console.log(`[Upload] Transcription complete.`);
     res.json(result);
   } catch (err: unknown) {
@@ -267,7 +267,7 @@ app.post('/api/transcribe-file', (req, res, next) => {
   }
 });
 
-/** POST /api/transcribe — Download audio + transcribe via Groq */
+/** POST /api/transcribe — Download audio + transcribe via OpenAI Whisper */
 app.post('/api/transcribe', async (req, res) => {
   const { url, platform } = req.body;
   if (!url) { res.status(400).json({ error: 'Missing url.' }); return; }
@@ -287,8 +287,8 @@ app.post('/api/transcribe', async (req, res) => {
       audioBuffer = Buffer.from(await response.arrayBuffer());
     }
 
-    console.log(`[Groq] Transcribing ${(audioBuffer.length / 1024 / 1024).toFixed(1)}MB...`);
-    const result = await transcribeWithGroq(audioBuffer);
+    console.log(`[Whisper] Transcribing ${(audioBuffer.length / 1024 / 1024).toFixed(1)}MB...`);
+    const result = await transcribeWithWhisper(audioBuffer);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Transcription failed.';
