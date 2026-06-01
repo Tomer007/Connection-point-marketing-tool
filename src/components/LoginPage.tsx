@@ -7,7 +7,7 @@ interface LoginPageProps {
 }
 
 const VALID_USERS = [
-  { username: 'tomergur@gmail.com', password: '1906' },
+  { username: import.meta.env.VITE_AUTH_USERNAME || 'admin', password: import.meta.env.VITE_AUTH_PASSWORD || '1234' },
 ];
 
 export function LoginPage({ onLogin }: LoginPageProps) {

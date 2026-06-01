@@ -243,7 +243,11 @@ ${request ? `Additional instructions: ${request}` : ''}`;
       </div>
 
       {/* Right Panel — Input */}
-      <div className="bg-cp-paper border border-cp-line rounded-2xl p-6 shadow-sm flex flex-col gap-5 order-1 lg:order-2" dir="rtl">
+      <form
+        className="bg-cp-paper border border-cp-line rounded-2xl p-6 shadow-sm flex flex-col gap-5 order-1 lg:order-2"
+        dir="rtl"
+        onSubmit={(e) => { e.preventDefault(); if (!isGenerating) handleGenerate(); }}
+      >
         <h3 className="text-xl font-bold text-cp-ink font-serif flex items-center gap-2">
           <Sparkles className="w-6 h-6 text-cp-clay" />
           <span>יצירת תוכן שיווקי</span>
@@ -370,8 +374,7 @@ ${request ? `Additional instructions: ${request}` : ''}`;
 
         {/* Generate Button */}
         <button
-          type="button"
-          onClick={handleGenerate}
+          type="submit"
           disabled={isGenerating}
           className="w-full bg-cp-clay hover:bg-cp-clay-deep text-white font-semibold py-3 px-4 rounded-full transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 cursor-pointer shadow-md hover:shadow-lg active:scale-98"
         >
@@ -396,7 +399,7 @@ ${request ? `Additional instructions: ${request}` : ''}`;
             </button>
           </div>
         )}
-      </div>
+      </form>
     </div>
   );
 }

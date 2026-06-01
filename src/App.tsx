@@ -365,7 +365,7 @@ export default function App() {
     } finally {
       setIsProcessing(false);
     }
-  }, [url, recoveryData, updateStep, cacheHtmlReport, activeTab, pastedTranscript, uploadedFile]);
+  }, [url, recoveryData, updateStep, cacheHtmlReport, activeTab, pastedTranscript, uploadedFile, userComments]);
 
   const handleResume = useCallback(() => {
     setShowResumeBanner(false);
@@ -615,7 +615,7 @@ export default function App() {
                     <div className="flex items-center justify-between">
                       <label htmlFor="transcript-input" className="text-[10px] uppercase text-cp-ink-3 ml-1 font-semibold tracking-wider">הדביקו תמלול</label>
                       {pastedTranscript && (
-                        <button onClick={() => setPastedTranscript('')} className="text-[10px] text-cp-ink-3 hover:text-cp-clay transition cursor-pointer">נקה</button>
+                        <button type="button" onClick={() => setPastedTranscript('')} className="text-[10px] text-cp-ink-3 hover:text-cp-clay transition cursor-pointer">נקה</button>
                       )}
                     </div>
                     <textarea
@@ -633,7 +633,11 @@ export default function App() {
                   <>
                     <label className="text-[10px] uppercase text-cp-ink-3 ml-1 font-semibold tracking-wider">העלאת קובץ שמע</label>
                     <div className="border-2 border-dashed border-cp-line rounded-xl p-6 text-center hover:border-cp-clay/40 transition cursor-pointer bg-cp-bone/50"
+                      role="button"
+                      aria-label="לחצו להעלאת קובץ שמע"
+                      tabIndex={0}
                       onClick={() => document.getElementById('file-upload')?.click()}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById('file-upload')?.click(); } }}
                     >
                       <input
                         id="file-upload"
@@ -668,7 +672,7 @@ export default function App() {
                     <div className="flex items-center justify-between">
                       <label htmlFor="url-input" className="text-[10px] uppercase text-cp-ink-3 ml-1 font-semibold tracking-wider">קישור (url)</label>
                       {url && (
-                        <button onClick={() => setUrl('')} className="text-[10px] text-cp-ink-3 hover:text-cp-clay transition cursor-pointer">נקה</button>
+                        <button type="button" onClick={() => setUrl('')} className="text-[10px] text-cp-ink-3 hover:text-cp-clay transition cursor-pointer">נקה</button>
                       )}
                     </div>
                     <input
@@ -688,7 +692,7 @@ export default function App() {
                 <div className="flex items-center justify-between">
                   <label htmlFor="user-comments" className="text-[10px] uppercase text-cp-ink-3 ml-1 font-semibold tracking-wider">הערות והנחיות (אופציונלי)</label>
                   {userComments && (
-                    <button onClick={() => setUserComments('')} className="text-[10px] text-cp-ink-3 hover:text-cp-clay transition cursor-pointer">נקה</button>
+                    <button type="button" onClick={() => setUserComments('')} className="text-[10px] text-cp-ink-3 hover:text-cp-clay transition cursor-pointer">נקה</button>
                   )}
                 </div>
                 <textarea
