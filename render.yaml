@@ -3,8 +3,8 @@ services:
     name: connection-point-marketing-tool
     runtime: node
     plan: starter
-    buildCommand: npm run render-build
-    startCommand: npm run start:prod
+    buildCommand: pip install yt-dlp && export PATH=$PATH:/opt/render/.local/bin && npm run render-build
+    startCommand: export PATH=$PATH:/opt/render/.local/bin && npm run start:prod
     envVars:
       - key: NODE_ENV
         value: production
