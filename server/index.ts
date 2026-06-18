@@ -173,8 +173,20 @@ async function downloadYouTubeAudio(url: string): Promise<Buffer> {
   const id = randomUUID();
   const outputTemplate = join(tmpdir(), `yt-audio-${id}.%(ext)s`);
 
+  // yt-dlp may be installed via pip in various locations
+  const ytdlpPaths = ['yt-dlp', './bin/yt-dlp', '/opt/render/.local/bin/yt-dlp', '/usr/local/bin/yt-dlp'];
+  let ytdlpBin = 'yt-dlp';
+  
+  for (const p of ytdlpPaths) {
+    try {
+      await execFileAsync(p, ['--version'], { timeout: 5000 });
+      ytdlpBin = p;
+      break;
+    } catch { /* try next */ }
+  }
+
   try {
-    const { stdout, stderr } = await execFileAsync('yt-dlp', [
+    const { stdout, stderr } = await execFileAsync(ytdlpBin, [
       '--extract-audio',
       '--audio-format', 'mp3',
       '--audio-quality', '5',
