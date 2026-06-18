@@ -209,7 +209,11 @@ async function downloadYouTubeAudio(url: string): Promise<Buffer> {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[yt-dlp error]:', message);
-    throw new Error(`YouTube download failed: ${message.substring(0, 200)}`);
+    // Detect bot/sign-in blocks from YouTube
+    if (message.includes('bot') || message.includes('Sign in') || message.includes('HTTP Error 403') || message.includes('Forbidden')) {
+      throw new Error('YouTube חוסם הורדה משרת ענן. נסו להעלות קובץ שמע ישירות.');
+    }
+    throw new Error('שגיאה בהורדה מ-YouTube. נסו להעלות קובץ שמע ישירות, או ודאו שהסרטון ציבורי ונגיש.');
   }
 }
 
@@ -453,12 +457,8 @@ app.post('/api/transcribe', async (req, res) => {
         const result = await transcribeWithWhisper(audioBuffer);
         res.json(result);
       } catch (dlErr: unknown) {
-        const dlMsg = dlErr instanceof Error ? dlErr.message : '';
-        // If bot detection, suggest using the transcript/captions approach
-        if (dlMsg.includes('bot') || dlMsg.includes('Sign in')) {
-          throw new Error('YouTube חוסם הורדה משרת ענן. נסו להעלות קובץ שמע ישירות, או השתמשו בתמלול ידני.');
-        }
-        throw dlErr;
+        const dlMsg = dlErr instanceof Error ? dlErr.message : 'שגיאה לא ידועה';
+        throw new Error(dlMsg);
       }
       return;
     }
