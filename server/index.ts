@@ -297,6 +297,96 @@ async function compressAudio(inputBuffer: Buffer): Promise<Buffer> {
 // File upload config (max 100MB)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
+// --- Helper: Fetch YouTube captions/subtitles directly ---
+async function fetchYouTubeCaptions(url: string): Promise<string | null> {
+  try {
+    // Extract video ID
+    const videoIdMatch = url.match(/(?:v=|youtu\.be\/|\/embed\/|\/v\/)([a-zA-Z0-9_-]{11})/);
+    if (!videoIdMatch) return null;
+    const videoId = videoIdMatch[1];
+
+    // Fetch the video page to get caption tracks
+    const pageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9,he;q=0.8',
+      },
+    });
+
+    if (!pageResponse.ok) return null;
+    const html = await pageResponse.text();
+
+    // Extract captions URL from player response
+    const captionMatch = html.match(/"captions":\s*(\{.*?"playerCaptionsTracklistRenderer".*?\})\s*,\s*"videoDetails"/s);
+    if (!captionMatch) return null;
+
+    // Try to parse and find a caption track
+    let captionData;
+    try {
+      // Extract just the tracklistRenderer part more carefully
+      const tracklistMatch = html.match(/"captionTracks":\s*(\[.*?\])/s);
+      if (!tracklistMatch) return null;
+      captionData = JSON.parse(tracklistMatch[1]);
+    } catch {
+      return null;
+    }
+
+    if (!Array.isArray(captionData) || captionData.length === 0) return null;
+
+    // Prefer Hebrew, then any auto-generated, then first available
+    const heTrack = captionData.find((t: any) => t.languageCode === 'he' || t.languageCode === 'iw');
+    const track = heTrack || captionData[0];
+
+    if (!track?.baseUrl) return null;
+
+    // Fetch the caption XML
+    const captionResponse = await fetch(track.baseUrl + '&fmt=srv3');
+    if (!captionResponse.ok) return null;
+    const captionXml = await captionResponse.text();
+
+    // Parse XML captions to plain text
+    const textSegments = captionXml.match(/<text[^>]*>(.*?)<\/text>/gs);
+    if (!textSegments) return null;
+
+    const lines = textSegments.map(seg => {
+      const startMatch = seg.match(/start="([\d.]+)"/);
+      const textMatch = seg.match(/<text[^>]*>(.*?)<\/text>/s);
+      const start = startMatch ? parseFloat(startMatch[1]) : 0;
+      const text = textMatch ? textMatch[1]
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/<[^>]+>/g, '')
+        .trim() : '';
+      
+      const min = Math.floor(start / 60);
+      const sec = Math.floor(start % 60);
+      return text ? `[${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}] ${text}` : '';
+    }).filter(Boolean);
+
+    return lines.length > 0 ? lines.join('\n') : null;
+  } catch (err) {
+    console.warn('[YouTube Captions] Failed to fetch captions:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+// --- Helper: Parse plain text to segments format ---
+function parseTextToSegments(text: string): Array<{ start: number; text: string }> {
+  const lines = text.split('\n');
+  return lines.map(line => {
+    const match = line.match(/^\[(\d{2}):(\d{2})\]\s*(.+)/);
+    if (match) {
+      const min = parseInt(match[1]);
+      const sec = parseInt(match[2]);
+      return { start: min * 60 + sec, text: match[3] };
+    }
+    return { start: 0, text: line };
+  }).filter(seg => seg.text.trim());
+}
+
 // ============================================================
 // ROUTES
 // ============================================================
@@ -345,12 +435,37 @@ app.post('/api/transcribe', async (req, res) => {
   if (!validateUrl(url)) { res.status(400).json({ error: 'קישור לא תקין. נתמכים: YouTube, Google Drive.' }); return; }
 
   try {
+    // For YouTube: try captions first (no download needed), fallback to yt-dlp + Whisper
+    if (platform === 'YouTube') {
+      console.log(`[YouTube] Attempting captions first: ${url}`);
+      const captions = await fetchYouTubeCaptions(url);
+      if (captions) {
+        console.log(`[YouTube] Got captions directly (${captions.length} chars)`);
+        res.json({ text: captions, segments: parseTextToSegments(captions) });
+        return;
+      }
+
+      // Fallback: download audio + Whisper
+      console.log(`[YouTube] No captions available, downloading audio...`);
+      try {
+        const audioBuffer = await downloadYouTubeAudio(url);
+        console.log(`[Whisper] Transcribing ${(audioBuffer.length / 1024 / 1024).toFixed(1)}MB...`);
+        const result = await transcribeWithWhisper(audioBuffer);
+        res.json(result);
+      } catch (dlErr: unknown) {
+        const dlMsg = dlErr instanceof Error ? dlErr.message : '';
+        // If bot detection, suggest using the transcript/captions approach
+        if (dlMsg.includes('bot') || dlMsg.includes('Sign in')) {
+          throw new Error('YouTube חוסם הורדה משרת ענן. נסו להעלות קובץ שמע ישירות, או השתמשו בתמלול ידני.');
+        }
+        throw dlErr;
+      }
+      return;
+    }
+
     let audioBuffer: Buffer;
 
-    if (platform === 'YouTube') {
-      console.log(`[YouTube] Downloading: ${url}`);
-      audioBuffer = await downloadYouTubeAudio(url);
-    } else if (platform === 'Google Drive') {
+    if (platform === 'Google Drive') {
       console.log(`[Drive] Downloading: ${url}`);
       audioBuffer = await downloadGoogleDriveAudio(url);
     } else {
