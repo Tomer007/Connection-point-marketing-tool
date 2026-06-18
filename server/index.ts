@@ -29,10 +29,13 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(join(import.meta.dirname || '.', '..', 'dist')));
 }
 
-// CORS for local dev
+// CORS — restrict in production, allow in dev
 app.use((_req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  const origin = process.env.NODE_ENV === 'production'
+    ? 'https://connection-point-marketing-tool.onrender.com'
+    : '*';
+  res.header('Access-Control-Allow-Origin', origin);
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   if (_req.method === 'OPTIONS') { res.sendStatus(204); return; }
   next();
@@ -46,55 +49,102 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
+// --- Server-side authentication ---
+const AUTH_USERNAME = process.env.AUTH_USERNAME || 'admin';
+const AUTH_PASSWORD = process.env.AUTH_PASSWORD || '1234';
+const SESSION_TOKEN = process.env.SESSION_SECRET || 'cp-session-' + Date.now();
+
+/** POST /api/login — server-side auth */
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  if (username === AUTH_USERNAME && password === AUTH_PASSWORD) {
+    res.json({ token: SESSION_TOKEN });
+  } else {
+    res.status(401).json({ error: 'שם משתמש או סיסמה שגויים' });
+  }
+});
+
+// --- URL validation helper ---
+function validateUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    const allowedDomains = ['youtube.com', 'youtu.be', 'www.youtube.com', 'drive.google.com', 'docs.google.com'];
+    return allowedDomains.some(d => parsed.hostname === d || parsed.hostname.endsWith('.' + d));
+  } catch { return false; }
+}
+
+// --- Time format validation helper ---
+function validateTimeFormat(time: string): boolean {
+  return /^\d{1,2}:\d{2}(:\d{2})?$/.test(time);
+}
+
 // --- Helper: Call LLM (Anthropic with OpenAI fallback) ---
 async function callLlm(systemPrompt: string, userMessage: string, maxTokens = 3000): Promise<string> {
-  const anthropicKey = process.env.VITE_ANTHROPIC_API_KEY || '';
-  const openaiKey = process.env.VITE_OPENAI_API_KEY || '';
+  const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
+  const openaiKey = process.env.OPENAI_API_KEY || '';
 
   if (anthropicKey) {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
-      }),
-    });
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: maxTokens,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userMessage }],
+        }),
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-      return data.content[0].text;
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.content?.[0]?.text || '';
+        if (!text) {
+          console.warn('[LLM] Anthropic returned empty content. stop_reason:', data.stop_reason);
+          if (!openaiKey) throw new Error('Anthropic returned empty response (possible max_tokens truncation)');
+          console.warn('[LLM] Falling back to OpenAI...');
+        } else {
+          console.log(`[LLM] Anthropic response: ${text.length} chars, stop_reason: ${data.stop_reason}`);
+          return text;
+        }
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = errData?.error?.message || `Anthropic ${response.status}`;
+        console.warn('[LLM] Anthropic failed:', errMsg);
+        if (!openaiKey) throw new Error(errMsg);
+        console.warn('[LLM] Falling back to OpenAI...');
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Unknown Anthropic error';
+      console.warn('[LLM] Anthropic exception:', errMsg);
+      if (!openaiKey) throw err;
+      console.warn('[LLM] Falling back to OpenAI...');
     }
-
-    const errData = await response.json().catch(() => ({}));
-    const errMsg = errData?.error?.message || `Anthropic ${response.status}`;
-
-    if (!openaiKey) throw new Error(errMsg);
-    console.warn('[LLM] Anthropic failed, falling back to OpenAI:', errMsg);
   }
 
   if (openaiKey) {
+    const requestBody: Record<string, unknown> = {
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      max_completion_tokens: Math.max(maxTokens, 16000),
+      temperature: 0.3,
+    };
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openaiKey}`,
       },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        max_tokens: maxTokens,
-        temperature: 0.2,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -103,10 +153,19 @@ async function callLlm(systemPrompt: string, userMessage: string, maxTokens = 30
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    const content = data.choices?.[0]?.message?.content || '';
+    const finishReason = data.choices?.[0]?.finish_reason;
+    console.log(`[LLM] OpenAI response: ${content.length} chars, finish_reason: ${finishReason}`);
+    
+    if (finishReason === 'length' && content.length < 100) {
+      console.error('[LLM] OpenAI truncated response too short. First 500 chars:', content.substring(0, 500));
+      throw new Error('OpenAI response was truncated (too short). The prompt may be too large.');
+    }
+    
+    return content;
   }
 
-  throw new Error('No API keys configured (VITE_ANTHROPIC_API_KEY or VITE_OPENAI_API_KEY).');
+  throw new Error('No API keys configured (ANTHROPIC_API_KEY or OPENAI_API_KEY).');
 }
 
 // --- Helper: Download YouTube audio ---
@@ -167,8 +226,8 @@ async function downloadGoogleDriveAudio(url: string): Promise<Buffer> {
 
 // --- Helper: Transcribe with OpenAI Whisper ---
 async function transcribeWithWhisper(audioBuffer: Buffer): Promise<unknown> {
-  const openaiKey = process.env.VITE_OPENAI_API_KEY;
-  if (!openaiKey) throw new Error('VITE_OPENAI_API_KEY not configured for transcription.');
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) throw new Error('OPENAI_API_KEY not configured for transcription.');
 
   // If file > 24MB, compress it with ffmpeg first
   let finalBuffer = audioBuffer;
@@ -249,9 +308,9 @@ app.post('/api/transcribe-file', (req, res, next) => {
     return;
   }
 
-  const openaiKey = process.env.VITE_OPENAI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) {
-    res.status(500).json({ error: 'מפתח OpenAI לא הוגדר בשרת. יש להגדיר VITE_OPENAI_API_KEY.' });
+    res.status(500).json({ error: 'מפתח OpenAI לא הוגדר בשרת. יש להגדיר OPENAI_API_KEY.' });
     return;
   }
 
@@ -271,6 +330,7 @@ app.post('/api/transcribe-file', (req, res, next) => {
 app.post('/api/transcribe', async (req, res) => {
   const { url, platform } = req.body;
   if (!url) { res.status(400).json({ error: 'Missing url.' }); return; }
+  if (!validateUrl(url)) { res.status(400).json({ error: 'קישור לא תקין. נתמכים: YouTube, Google Drive.' }); return; }
 
   try {
     let audioBuffer: Buffer;
@@ -330,6 +390,104 @@ app.post('/api/generate-content', async (req, res) => {
     const message = err instanceof Error ? err.message : 'Content generation failed.';
     console.error('[generate-content error]:', message);
     res.status(502).json({ error: message });
+  }
+});
+
+/** POST /api/cut-clip — Download YouTube video segment and return as downloadable clip */
+app.post('/api/cut-clip', async (req, res) => {
+  const { url, startTime, endTime, title } = req.body;
+  if (!url || !startTime || !endTime) {
+    res.status(400).json({ error: 'Missing url, startTime, or endTime.' });
+    return;
+  }
+  if (!validateUrl(url)) {
+    res.status(400).json({ error: 'קישור לא תקין. נתמכים: YouTube, Google Drive.' });
+    return;
+  }
+  if (!validateTimeFormat(startTime) || !validateTimeFormat(endTime)) {
+    res.status(400).json({ error: 'פורמט זמן לא תקין. השתמשו ב-MM:SS.' });
+    return;
+  }
+
+  const id = randomUUID();
+  const outputPath = join(tmpdir(), `clip-${id}.mp4`);
+
+  try {
+    // Convert MM:SS to seconds
+    const parseTime = (t: string): number => {
+      const parts = t.split(':').map(Number);
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      return 0;
+    };
+
+    const startSec = parseTime(startTime);
+    const endSec = parseTime(endTime);
+    const duration = endSec - startSec;
+
+    if (duration <= 0 || duration > 120) {
+      res.status(400).json({ error: 'משך הקליפ חייב להיות בין 1 ל-120 שניות.' });
+      return;
+    }
+
+    console.log(`[Cut] Downloading & cutting ${url} [${startTime} → ${endTime}] (${duration}s)`);
+
+    // Use yt-dlp to download the video segment
+    const downloadPath = join(tmpdir(), `dl-${id}.mp4`);
+
+    // Download with section cutting using yt-dlp
+    const { stdout: dlStdout, stderr: dlStderr } = await execFileAsync('yt-dlp', [
+      '--format', 'best[height<=1080][ext=mp4]/best[ext=mp4]/best',
+      '--no-playlist',
+      '--no-warnings',
+      '--print', 'after_move:filepath',
+      '--download-sections', `*${startTime}-${endTime}`,
+      '--force-keyframes-at-cuts',
+      '-o', downloadPath,
+      url,
+    ], { timeout: 300_000, maxBuffer: 10 * 1024 * 1024 });
+
+    if (dlStderr) console.warn('[yt-dlp stderr]:', dlStderr);
+
+    const downloadedFile = dlStdout.trim();
+    if (!downloadedFile) throw new Error('yt-dlp did not return an output file path');
+
+    console.log(`[Cut] Downloaded segment: ${downloadedFile}`);
+
+    // Step 2: Re-encode to Instagram Reel format (9:16, 1080x1920)
+    await execFileAsync('ffmpeg', [
+      '-i', downloadedFile,
+      '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black',
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+      '-c:a', 'aac', '-b:a', '128k',
+      '-r', '30',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      '-y',
+      outputPath,
+    ], { timeout: 120_000 });
+
+    // Clean up downloaded file
+    await unlink(downloadedFile).catch(() => {});
+
+    console.log(`[Cut] Clip ready: ${outputPath}`);
+
+    // Send the clip file
+    const clipBuffer = await readFile(outputPath);
+    const safeFilename = `clip_${id.substring(0, 8)}.mp4`;
+    const utf8Filename = `${(title || 'clip').replace(/[^\w\u0590-\u05FF\s-]/g, '').trim().replace(/\s+/g, '_')}.mp4`;
+
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(utf8Filename)}`);
+    res.setHeader('Content-Length', clipBuffer.length.toString());
+    res.send(clipBuffer);
+
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Clip cutting failed.';
+    console.error('[cut-clip error]:', message);
+    res.status(502).json({ error: message });
+  } finally {
+    await unlink(outputPath).catch(() => {});
   }
 });
 

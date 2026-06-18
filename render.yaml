@@ -8,11 +8,13 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: VITE_ANTHROPIC_API_KEY
+      - key: ANTHROPIC_API_KEY
         sync: false
-      - key: VITE_OPENAI_API_KEY
+      - key: OPENAI_API_KEY
         sync: false
-      - key: VITE_GROQ_API_KEY
+      - key: AUTH_USERNAME
+        sync: false
+      - key: AUTH_PASSWORD
         sync: false
       - key: VITE_SERVER_URL
         value: ""

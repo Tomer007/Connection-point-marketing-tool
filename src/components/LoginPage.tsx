@@ -6,10 +6,6 @@ interface LoginPageProps {
   onLogin: () => void;
 }
 
-const VALID_USERS = [
-  { username: import.meta.env.VITE_AUTH_USERNAME || 'admin', password: import.meta.env.VITE_AUTH_PASSWORD || '1234' },
-];
-
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -17,24 +13,32 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
-    setTimeout(() => {
-      const isValid = VALID_USERS.some(
-        u => u.username === username.trim().toLowerCase() && u.password === password
-      );
+    try {
+      const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+      const response = await fetch(`${serverUrl}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim().toLowerCase(), password }),
+      });
 
-      if (isValid) {
-        localStorage.setItem('cp_auth', 'true');
+      if (response.ok) {
+        const data = await response.json();
+        localStorage.setItem('cp_auth', data.token || 'true');
         onLogin();
       } else {
-        setError('שם משתמש או סיסמה שגויים');
+        const errData = await response.json().catch(() => ({}));
+        setError(errData?.error || 'שם משתמש או סיסמה שגויים');
       }
+    } catch {
+      setError('שגיאת חיבור לשרת. נסו שוב.');
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   return (

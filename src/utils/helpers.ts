@@ -55,14 +55,42 @@ export function formatHebrewDate(): string {
 }
 
 /**
- * Safely copy text to clipboard with error handling.
+ * Format Whisper segments into timestamped transcript lines.
+ */
+export function formatWhisperSegments(segments: { start: number; text: string }[]): string {
+  return segments
+    .map(seg => {
+      const min = Math.floor(seg.start / 60);
+      const sec = Math.floor(seg.start % 60);
+      return `[${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}] ${seg.text}`;
+    })
+    .join('\n');
+}
+
+/**
+ * Safely copy text to clipboard with fallback for non-HTTPS contexts.
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
+  // Try modern clipboard API first
   try {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    console.warn('Clipboard write failed');
-    return false;
+    // Fallback: textarea + execCommand
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return success;
+    } catch {
+      console.warn('Clipboard write failed (both methods)');
+      return false;
+    }
   }
 }

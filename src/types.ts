@@ -38,6 +38,8 @@ export interface ViralCut {
   // Publishing strategy
   publishOrder?: number;
   publishNote?: string;
+  // Algorithm optimization
+  algorithmLever?: string;
 }
 
 export interface PipelineResult {

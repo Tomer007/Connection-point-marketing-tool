@@ -40,47 +40,37 @@ const TEMPLATES = [
     label: 'קידום פרק פודקאסט',
     content: '',
     fields: [
-      { key: 'episodeName', label: 'שם הפרק', placeholder: 'למשל: "מהמשבר לתיקון המחשבה"' },
-      { key: 'guestName', label: 'שם האורח/ת', placeholder: 'למשל: עמרי פלד' },
-      { key: 'mainQuote', label: 'ציטוט מרכזי מהפרק', placeholder: 'הדביקו ציטוט חזק מתוך הפרק' },
-      { key: 'keyInsight', label: 'תובנה מרכזית', placeholder: 'מה הדבר הכי חשוב שהאורח אמר?' },
+      { key: 'transcript', label: 'תמלול הפרק', placeholder: 'הדביקו כאן את תמלול הפרק (או חלק ממנו)...', multiline: true },
     ],
     buildContent: (fields: Record<string, string>) =>
-      `קידום פרק פודקאסט "זה כבר קרה"\nשם הפרק: ${fields.episodeName || ''}\nאורח/ת: ${fields.guestName || ''}\nציטוט מרכזי: "${fields.mainQuote || ''}"\nתובנה מרכזית: ${fields.keyInsight || ''}`,
+      `קידום פרק פודקאסט "זה כבר קרה"\n\nתמלול:\n${fields.transcript || ''}`,
   },
   {
     label: 'הזמנה לריטריט',
     content: '',
     fields: [
-      { key: 'retreatName', label: 'שם הריטריט', placeholder: 'למשל: ריטריט יער הסודי' },
-      { key: 'date', label: 'תאריך', placeholder: 'למשל: 19.6.2026' },
-      { key: 'location', label: 'מיקום', placeholder: 'למשל: גליל עליון' },
-      { key: 'theme', label: 'נושא / חוויה מרכזית', placeholder: 'מה המשתתפים יחוו?' },
+      { key: 'details', label: 'פרטי הריטריט', placeholder: 'כתבו בחופשיות: שם הריטריט, תאריך, מיקום, נושא/חוויה מרכזית, קהל יעד...', multiline: true },
     ],
     buildContent: (fields: Record<string, string>) =>
-      `הזמנה לריטריט של נקודת חיבור\nשם: ${fields.retreatName || ''}\nתאריך: ${fields.date || ''}\nמיקום: ${fields.location || ''}\nנושא מרכזי: ${fields.theme || ''}`,
+      `הזמנה לריטריט של נקודת חיבור\n\n${fields.details || ''}`,
   },
   {
     label: 'ציטוט השראה',
     content: '',
     fields: [
-      { key: 'quote', label: 'הציטוט', placeholder: 'הדביקו את הציטוט כאן' },
-      { key: 'source', label: 'מקור (אופציונלי)', placeholder: 'מי אמר? מאיזה פרק?' },
-      { key: 'context', label: 'הקשר קצר', placeholder: 'במה עסקה השיחה כשזה נאמר?' },
+      { key: 'details', label: 'הציטוט והקשר', placeholder: 'כתבו בחופשיות: הציטוט עצמו, מי אמר (אופציונלי), מאיזה פרק, ובאיזה הקשר נאמר...', multiline: true },
     ],
     buildContent: (fields: Record<string, string>) =>
-      `ציטוט השראה\n"${fields.quote || ''}"\nמקור: ${fields.source || 'אנה ויעל | נקודת חיבור'}\nהקשר: ${fields.context || ''}`,
+      `ציטוט השראה\n\n${fields.details || ''}`,
   },
   {
     label: 'שיתוף אישי',
     content: '',
     fields: [
-      { key: 'story', label: 'מה קרה?', placeholder: 'ספרו בקצרה מה קרה לכם' },
-      { key: 'feeling', label: 'מה הרגשתם?', placeholder: 'איזה רגש עלה?' },
-      { key: 'insight', label: 'מה למדתם מזה?', placeholder: 'מה התובנה שעלתה?' },
+      { key: 'details', label: 'השיתוף', placeholder: 'כתבו בחופשיות: מה קרה, מה הרגשתם, מה למדתם מזה...', multiline: true },
     ],
     buildContent: (fields: Record<string, string>) =>
-      `שיתוף אישי של אנה ויעל\nמה קרה: ${fields.story || ''}\nמה הרגשנו: ${fields.feeling || ''}\nמה למדנו: ${fields.insight || ''}`,
+      `שיתוף אישי של אנה ויעל\n\n${fields.details || ''}`,
   },
 ];
 
@@ -94,7 +84,7 @@ export function ContentGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<number | null>(0);
   const [templateFields, setTemplateFields] = useState<Record<string, string>>({});
 
   const getSelectedTone = useCallback(() => {
@@ -109,6 +99,12 @@ export function ContentGenerator() {
     let finalContent = content;
     if (selectedTemplate !== null) {
       const template = TEMPLATES[selectedTemplate];
+      // Check if user actually filled in data
+      const hasInput = Object.values(templateFields).some(v => v.trim().length > 0);
+      if (!hasInput) {
+        setError('אנא הזינו תוכן לפני היצירה.');
+        return;
+      }
       finalContent = template.buildContent(templateFields);
     }
 
@@ -281,13 +277,23 @@ ${request ? `Additional instructions: ${request}` : ''}`;
             {TEMPLATES[selectedTemplate].fields.map(field => (
               <div key={field.key} className="flex flex-col gap-1">
                 <label className="text-[10px] text-cp-ink-2 font-semibold">{field.label}</label>
-                <input
-                  type="text"
-                  value={templateFields[field.key] || ''}
-                  onChange={(e) => updateTemplateField(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                  className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-1.5 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 transition"
-                />
+                {(field as any).multiline ? (
+                  <textarea
+                    value={templateFields[field.key] || ''}
+                    onChange={(e) => updateTemplateField(field.key, e.target.value)}
+                    placeholder={field.placeholder}
+                    rows={8}
+                    className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 transition resize-y min-h-[120px]"
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={templateFields[field.key] || ''}
+                    onChange={(e) => updateTemplateField(field.key, e.target.value)}
+                    placeholder={field.placeholder}
+                    className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-1.5 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 transition"
+                  />
+                )}
               </div>
             ))}
           </div>

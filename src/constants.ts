@@ -16,7 +16,7 @@ export const DEFAULT_PODCAST_NAME = 'אנה ויעל | נקודת חיבור';
 // Initial pipeline steps
 export const INITIAL_STEPS: PipelineStep[] = [
   { id: 1, name: 'תמלול קובץ השמע', state: 'idle' },
-  { id: 2, name: 'חילוץ 4 קטעים בעלי פוטנציאל ויראלי', state: 'idle' },
+  { id: 2, name: 'חילוץ קטעים בעלי פוטנציאל ויראלי', state: 'idle' },
   { id: 3, name: 'תיקוף קטעים מול מדדי ויראליות', state: 'idle' },
   { id: 4, name: 'דירוג ושקלול ציונים', state: 'idle' },
   { id: 5, name: 'הפקת דו"ח תוכן ניהולי מותאם', state: 'idle' },

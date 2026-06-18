@@ -25,8 +25,12 @@ import { PipelineProgress } from './components/PipelineProgress';
 import { ViralCutCard } from './components/ViralCutCard';
 import { ContentGenerator } from './components/ContentGenerator';
 import { LoginPage } from './components/LoginPage';
+import { PodcastDescription } from './components/PodcastDescription';
+import { WhatsAppButton } from './components/WhatsAppButton';
+import { Tooltip } from './components/Tooltip';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
-type AppTab = 'podcast2reels' | 'content-generator';
+type AppTab = 'podcast2reels' | 'content-generator' | 'podcast-description';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('cp_auth') === 'true');
@@ -38,6 +42,7 @@ export default function App() {
   const [pastedTranscript, setPastedTranscript] = useState('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [userComments, setUserComments] = useState('');
+  const [clipCount, setClipCount] = useState(1);
   const [podcastName, setPodcastName] = useState(DEFAULT_PODCAST_NAME);
   const [episodeName, setEpisodeName] = useState('');
   const [isTranscriptModalOpen, setIsTranscriptModalOpen] = useState(false);
@@ -73,6 +78,9 @@ export default function App() {
   // Ref to capture transcript during pipeline execution
   const latestTranscriptRef = useRef<string | undefined>(undefined);
 
+  // AbortController for cancelling in-flight pipeline requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Update a single step status — uses functional updates to avoid stale closures
   const updateStep = useCallback((
     stepId: number,
@@ -80,30 +88,17 @@ export default function App() {
     details?: string,
     intermediateData?: StepIntermediateData
   ) => {
-    let updatedSteps: PipelineStep[] = [];
-    let updatedLogs: string[] = [];
+    setSteps(prev => prev.map(step =>
+      step.id === stepId ? { ...step, state, details } : step
+    ));
 
-    setSteps(prev => {
-      const next = prev.map(step =>
-        step.id === stepId ? { ...step, state, details } : step
-      );
-      updatedSteps = next;
-      return next;
-    });
+    if (details) {
+      setConsoleLogs(prev => [...prev, `[Step ${stepId}] ${details}`]);
+    }
 
-    setConsoleLogs(prev => {
-      if (details) {
-        const next = [...prev, `[Step ${stepId}] ${details}`];
-        updatedLogs = next;
-        return next;
-      }
-      updatedLogs = prev;
-      return prev;
-    });
-
-    setRecoveryData(prev => {
-      const next = { ...prev };
-      if (state === 'done' && intermediateData) {
+    if (state === 'done' && intermediateData) {
+      setRecoveryData(prev => {
+        const next = { ...prev };
         if (stepId === 1) {
           next.transcript = intermediateData.transcript;
           latestTranscriptRef.current = intermediateData.transcript;
@@ -114,19 +109,25 @@ export default function App() {
         }
         if (intermediateData.podcastName) next.podcastName = intermediateData.podcastName;
         if (intermediateData.episodeName) next.episodeName = intermediateData.episodeName;
-      }
+        return next;
+      });
+    }
+  }, []);
 
-      const completedStepsCount = updatedSteps.filter(s => s.state === 'done').length;
+  // Sync pipeline state to localStorage (avoids race condition from writing inside setState)
+  useEffect(() => {
+    if (!isProcessing) return; // Only persist during active pipeline
+    const completedStepsCount = steps.filter(s => s.state === 'done').length;
+    if (completedStepsCount === 0) return;
 
+    try {
       localStorage.setItem(STORAGE_KEYS.RECOVERY_PAYLOAD, JSON.stringify({
-        url, activeTab, steps: updatedSteps,
-        consoleLogs: updatedLogs,
-        recoveryData: next, completedStepsCount, timestamp: Date.now()
+        url, activeTab, steps,
+        consoleLogs,
+        recoveryData, completedStepsCount, timestamp: Date.now()
       }));
-
-      return next;
-    });
-  }, [url, activeTab]);
+    } catch (e) { console.warn('Failed to persist recovery state', e); }
+  }, [steps, consoleLogs, recoveryData, isProcessing, url, activeTab]);
 
   // Load recovery state on mount
   useEffect(() => {
@@ -242,6 +243,12 @@ export default function App() {
 
     setIsProcessing(true);
 
+    // Abort any previous in-flight pipeline
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
     try {
       const completedStepsCount = stepsRef.current.filter(s => s.state === 'done').length;
 
@@ -329,7 +336,8 @@ export default function App() {
         activeTab === 'transcript' || activeTab === 'upload' ? '' : url,
         updateStep,
         resumeDataForPipeline,
-        userComments.trim() || undefined
+        userComments.trim() || undefined,
+        clipCount
       );
 
       const extractedPodcast = result.podcastName || DEFAULT_PODCAST_NAME;
@@ -365,7 +373,7 @@ export default function App() {
     } finally {
       setIsProcessing(false);
     }
-  }, [url, recoveryData, updateStep, cacheHtmlReport, activeTab, pastedTranscript, uploadedFile, userComments]);
+  }, [url, recoveryData, updateStep, cacheHtmlReport, activeTab, pastedTranscript, uploadedFile, userComments, clipCount]);
 
   const handleResume = useCallback(() => {
     setShowResumeBanner(false);
@@ -415,6 +423,11 @@ export default function App() {
   }, [cachedReportForUrl]);
 
   const handleNewExtraction = useCallback(() => {
+    // Abort any in-flight pipeline
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     setCurrentResult(null);
     setUrl('');
     setPastedTranscript('');
@@ -527,6 +540,20 @@ export default function App() {
               <span>Content Generator</span>
               <span className="text-[9px] opacity-60">| יצירת תוכן</span>
             </button>
+            <button
+              role="tab"
+              aria-selected={appTab === 'podcast-description'}
+              onClick={() => setAppTab('podcast-description')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-t-lg transition cursor-pointer border-b-2 ${
+                appTab === 'podcast-description'
+                  ? 'border-cp-clay text-cp-clay bg-cp-paper'
+                  : 'border-transparent text-cp-ink-3 hover:text-cp-ink-2'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Podcast Description</span>
+              <span className="text-[9px] opacity-60">| תיאור פרק</span>
+            </button>
           </nav>
         </div>
       </header>
@@ -535,7 +562,12 @@ export default function App() {
       <main className="flex-grow max-w-6xl w-full mx-auto px-4 py-8 flex flex-col gap-8">
         {/* Content Generator Tab — always mounted, hidden when inactive */}
         <div className={appTab === 'content-generator' ? '' : 'hidden'}>
-          <ContentGenerator />
+          <ErrorBoundary><ContentGenerator /></ErrorBoundary>
+        </div>
+
+        {/* Podcast Description Tab */}
+        <div className={appTab === 'podcast-description' ? '' : 'hidden'}>
+          <ErrorBoundary><PodcastDescription /></ErrorBoundary>
         </div>
 
         {/* Podcast 2 Reels Tab — always mounted, hidden when inactive */}
@@ -585,7 +617,7 @@ export default function App() {
 
               {/* Platform Tabs */}
               <div>
-                <label className="text-[10px] uppercase text-cp-ink-3 ml-1 block mb-2 font-semibold tracking-wider">בחירת מקור</label>
+                <label className="text-[10px] uppercase text-cp-ink-3 ml-1 block mb-2 font-semibold tracking-wider flex items-center gap-1.5">בחירת מקור <Tooltip text="בחרו מאיפה להעלות את האודיו: YouTube, Google Drive, קובץ מהמחשב, או הדביקו תמלול ישירות" /></label>
                 <div className="flex p-1 bg-cp-sand rounded-lg border border-cp-line" role="tablist" aria-label="Source selection">
                   {(['youtube', 'drive', 'upload', 'transcript'] as const).map(tab => (
                     <button
@@ -683,14 +715,46 @@ export default function App() {
                       placeholder={URL_PLACEHOLDERS[activeTab]}
                       className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 font-medium transition"
                     />
+                    {!url && activeTab === 'youtube' && (
+                      <button
+                        type="button"
+                        onClick={() => setUrl('https://www.youtube.com/watch?v=RwuPfWgsD-4')}
+                        className="text-[10px] text-cp-clay hover:text-cp-clay-deep transition cursor-pointer mt-1"
+                      >
+                        💡 נסו דוגמה: פרק "טעויות ושחרור" עם שחר קספי
+                      </button>
+                    )}
                   </>
                 )}
+              </div>
+
+              {/* Clip Count Selector */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] uppercase text-cp-ink-3 ml-1 font-semibold tracking-wider flex items-center gap-1.5">מספר קליפים לחילוץ <Tooltip text="כמה קליפים ויראליים לחלץ? ברירת מחדל: 1 (הכי חזק). ניתן עד 4. רק קליפים עם ציון 60+ ייכללו." /></label>
+                <div className="flex p-1 bg-cp-sand rounded-lg border border-cp-line" role="radiogroup" aria-label="Number of clips">
+                  {[1, 2, 3, 4].map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      role="radio"
+                      aria-checked={clipCount === n}
+                      onClick={() => setClipCount(n)}
+                      className={`flex-1 py-1.5 text-xs font-medium rounded transition cursor-pointer ${
+                        clipCount === n
+                          ? 'bg-cp-paper text-cp-clay border border-cp-line font-bold shadow-sm'
+                          : 'text-cp-ink-2 hover:text-cp-ink'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* User Comments */}
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
-                  <label htmlFor="user-comments" className="text-[10px] uppercase text-cp-ink-3 ml-1 font-semibold tracking-wider">הערות והנחיות (אופציונלי)</label>
+                  <label htmlFor="user-comments" className="text-[10px] uppercase text-cp-ink-3 ml-1 font-semibold tracking-wider flex items-center gap-1.5">הערות והנחיות (אופציונלי) <Tooltip text="הוסיפו הנחיות מותאמות: התמקדו באורח מסוים, חפשו רגעים על נושא ספציפי, או העדיפו סוג מסוים של רגע (רגשי, פרקטי, מצחיק)" /></label>
                   {userComments && (
                     <button type="button" onClick={() => setUserComments('')} className="text-[10px] text-cp-ink-3 hover:text-cp-clay transition cursor-pointer">נקה</button>
                   )}
@@ -747,9 +811,18 @@ export default function App() {
                 {errorMessage && (
                   <div className="bg-cp-rose/10 border border-cp-rose/25 p-4 rounded-xl flex gap-3 text-sm text-cp-clay items-start" role="alert">
                     <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
-                    <div>
+                    <div className="flex-1">
                       <strong className="block font-semibold">שגיאה</strong>
                       <span className="text-xs text-cp-ink-2 mt-1 block leading-relaxed">{errorMessage}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleStartPipeline(true)}
+                        disabled={isProcessing}
+                        className="mt-3 inline-flex items-center gap-2 bg-cp-clay hover:bg-cp-clay-deep text-white font-semibold px-4 py-2 rounded-full transition text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>נסה שוב מהשלב שנכשל</span>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -761,7 +834,7 @@ export default function App() {
           <div className="lg:col-span-3 flex flex-col gap-6">
             {/* Pipeline Progress */}
             {(isProcessing || consoleLogs.length > 0) && (
-              <PipelineProgress steps={steps} consoleLogs={consoleLogs} isProcessing={isProcessing} />
+              <PipelineProgress steps={steps} consoleLogs={consoleLogs} isProcessing={isProcessing} transcript={recoveryData.transcript} episodeName={episodeName} />
             )}
 
             {/* Results */}
@@ -796,6 +869,25 @@ export default function App() {
                       >
                         <FileText className="w-4 h-4" /><span>תמלול</span>
                       </button>
+                      <button
+                        onClick={() => {
+                          if (!recoveryData.transcript) return;
+                          const blob = new Blob([recoveryData.transcript], { type: 'text/plain;charset=utf-8' });
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = `${currentResult.episodeName || currentResult.podcastName || 'transcript'}.txt`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          URL.revokeObjectURL(url);
+                        }}
+                        disabled={!recoveryData.transcript}
+                        title="הורד תמלול כקובץ טקסט"
+                        className="inline-flex items-center gap-2 bg-cp-bone hover:bg-cp-sand border border-cp-line text-cp-ink font-semibold px-4 py-2 rounded-full transition shadow-sm text-xs tracking-wider uppercase cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Download className="w-4 h-4" /><span>הורד תמלול</span>
+                      </button>
                     </div>
                   </div>
                   {/* Source breadcrumb */}
@@ -809,7 +901,7 @@ export default function App() {
                 {/* Cut Cards */}
                 <div className="space-y-6">
                   {currentResult.cuts.map((cut, idx) => (
-                    <ViralCutCard key={cut.id || idx} cut={cut} index={idx} />
+                    <ViralCutCard key={cut.id || idx} cut={cut} index={idx} sourceUrl={currentResult.sourceUrl} transcript={recoveryData.transcript} />
                   ))}
                 </div>
 
@@ -869,6 +961,9 @@ export default function App() {
           onClose={() => setIsTranscriptModalOpen(false)}
         />
       )}
+
+      {/* WhatsApp Support Button */}
+      <WhatsAppButton />
 
       {/* Footer */}
       <footer className="border-t border-cp-line bg-cp-sand/50 py-6 text-center text-xs text-cp-ink-3 mt-auto px-4">

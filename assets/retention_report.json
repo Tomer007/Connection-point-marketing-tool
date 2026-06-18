@@ -1,0 +1,61 @@
+{
+  "task": "viral_reel_optimization",
+  "input": "reel_no_text_version.mp4",
+  "duration": 47.02,
+
+  "timeline_structure": [
+    { "segment": "0-2s", "type": "hook", "action": "tight_zoom_1.15x", "text": "טעות אחת שינתה הכל", "intent": "immediate_emotional_claim" },
+    { "segment": "3-6s", "type": "problem", "action": "zoom_pulse_1.04x", "text": "לא ראיתי אותה", "intent": "build_tension" },
+    { "segment": "7-10s", "type": "deepening", "action": "zoom_pulse", "text": "לא הרגשתי מה עוברת", "intent": "empathy_trigger" },
+    { "segment": "11-15s", "type": "peak_setup", "action": "zoom_pulse", "text": "וזה הכל התחיל מזה שלא ראיתי", "intent": "revelation_approach" },
+    { "segment": "16-20s", "type": "peak", "action": "zoom_pulse", "text": "אותה שאתה איתה לכאורה", "intent": "emotional_climax" },
+    { "segment": "21-25s", "type": "reflection", "action": "zoom_pulse", "text": "אני אמור לראות את המשתתפים שלי", "intent": "self_accountability" },
+    { "segment": "26-29s", "type": "resolution", "action": "zoom_settle", "text": "וברגע זה לא ראיתי אותה", "intent": "quiet_landing" },
+    { "segment": "29.5-32s", "type": "cta", "action": "static", "text": "נקודת חיבור לינק בביו", "intent": "brand_close" }
+  ],
+
+  "attention_engine": {
+    "zoom_type": "sinusoidal_pulse",
+    "formula": "z = 1 + 0.04 * sin(frame / 45)",
+    "frequency": "every_3_seconds",
+    "hook_zoom": "1.15x_for_first_2_seconds",
+    "note": "Creates subtle 'breathing' motion that holds attention without being distracting"
+  },
+
+  "subtitle_system": {
+    "format": "ASS (Advanced SubStation Alpha)",
+    "features": [
+      "max 5 words per line",
+      "max 2 lines",
+      "1 keyword highlighted per card (gold/orange color)",
+      "fade transitions between cards",
+      "lower-third safe zone (MarginV=150)"
+    ],
+    "highlighted_keywords": ["שינתה", "ראיתי", "עוברת", "ראיתי", "איתה", "לראות", "אותה", "חיבור"]
+  },
+
+  "visual_enhancements": {
+    "contrast_boost": "+12%",
+    "brightness_boost": "+3%",
+    "crop_mode": "fill (no black bars)"
+  },
+
+  "retention_predictions": {
+    "3s_retention": "~75% (strong hook, immediate emotional claim, no buffer)",
+    "avg_watch_time": "~62% (zoom pulses maintain attention, keyword highlights guide eye)",
+    "rewatch_signal": "medium-high (emotional peak invites replay to catch nuance)",
+    "send_potential": "high (vulnerability confession = 'this is exactly someone I know')"
+  },
+
+  "outputs": {
+    "viral_reel.mp4": "Full treatment: zoom pulses + ASS keyword subtitles + contrast + hook zoom",
+    "subtitled_version.mp4": "Clean SRT subtitles, no zoom effects",
+    "high_hook_version.mp4": "Extra-tight first 2s zoom (1.15x) + hook text overlay + higher contrast"
+  },
+
+  "ffmpeg_commands": {
+    "viral": "ffmpeg -i input.mp4 -vf \"zoompan=z='1+0.04*sin(on/45)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,eq=contrast=1.12:brightness=0.03,ass='subtitles.ass'\" -c:v libx264 -crf 20 -movflags +faststart output.mp4",
+    "subtitled": "ffmpeg -i input.mp4 -vf \"subtitles='subs.srt':force_style='FontSize=30,Bold=1,Outline=3,MarginV=120'\" -c:v libx264 -crf 22 -movflags +faststart output.mp4",
+    "high_hook": "ffmpeg -i input.mp4 -t 30 -vf \"zoompan=z='if(lt(on,60),1.15,1+0.03*sin((on-60)/45))':...,drawtext=text='hook':enable='lt(t,3)'\" -c:v libx264 -crf 20 -movflags +faststart output.mp4"
+  }
+}

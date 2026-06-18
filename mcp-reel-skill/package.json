@@ -1,0 +1,20 @@
+{
+  "name": "instagram-reel-ffmpeg-skill",
+  "version": "1.0.0",
+  "description": "MCP skill for generating Instagram Reels using FFmpeg",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2"
+  }
+}
