@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
-import { Sparkles, Loader2, Copy, ClipboardCheck, RotateCcw, RefreshCw } from 'lucide-react';
+import { Sparkles, Loader2, Copy, ClipboardCheck, RotateCcw, RefreshCw, Link } from 'lucide-react';
 import { copyToClipboard } from '../utils/helpers';
 import { generateContentServer } from '../utils/api';
 import { CONTENT_GENERATOR_PROMPT } from '../utils/prompts';
+import { STORAGE_KEYS, CACHE_TTL_MS } from '../constants';
 import Markdown from 'react-markdown';
 
 type ContentFormat = 'reels' | 'instagram' | 'email';
@@ -86,6 +87,10 @@ export function ContentGenerator() {
   const [copied, setCopied] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<number | null>(0);
   const [templateFields, setTemplateFields] = useState<Record<string, string>>({});
+  const [inputMode, setInputMode] = useState<'transcript' | 'url'>('transcript');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcribedText, setTranscribedText] = useState('');
 
   const getSelectedTone = useCallback(() => {
     if (tonePreset === 'custom') return customTone || 'warm and spiritual';
@@ -99,13 +104,80 @@ export function ContentGenerator() {
     let finalContent = content;
     if (selectedTemplate !== null) {
       const template = TEMPLATES[selectedTemplate];
-      // Check if user actually filled in data
-      const hasInput = Object.values(templateFields).some(v => v.trim().length > 0);
-      if (!hasInput) {
-        setError('אנא הזינו תוכן לפני היצירה.');
-        return;
+
+      // If podcast template (index 0) with URL mode, transcribe first
+      if (selectedTemplate === 0 && inputMode === 'url') {
+        if (!youtubeUrl.trim()) {
+          setError('אנא הזינו קישור YouTube.');
+          return;
+        }
+
+        let transcript = transcribedText;
+        if (!transcript.trim()) {
+          setIsTranscribing(true);
+          try {
+            // Check cache
+            const cacheKey = `${STORAGE_KEYS.TRANSCRIPT_CACHE_PREFIX}url_${youtubeUrl.trim()}`;
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (parsed.transcript && Date.now() - parsed.timestamp <= CACHE_TTL_MS) {
+                transcript = parsed.transcript;
+              }
+            }
+
+            if (!transcript.trim()) {
+              const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+              const response = await fetch(`${serverUrl}/api/transcribe`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: youtubeUrl.trim(), platform: 'YouTube' }),
+              });
+
+              if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData?.error || `שגיאה בתמלול (${response.status})`);
+              }
+
+              const data = await response.json();
+              if (data.segments && Array.isArray(data.segments)) {
+                transcript = data.segments
+                  .map((seg: { start: number; text: string }) => {
+                    const min = Math.floor(seg.start / 60);
+                    const sec = Math.floor(seg.start % 60);
+                    return `[${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}] ${seg.text}`;
+                  })
+                  .join('\n');
+              } else if (data.text) {
+                transcript = data.text;
+              }
+
+              // Cache
+              try {
+                localStorage.setItem(cacheKey, JSON.stringify({ transcript, timestamp: Date.now() }));
+              } catch { /* quota */ }
+            }
+
+            setTranscribedText(transcript);
+          } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'שגיאה בתמלול.');
+            setIsTranscribing(false);
+            return;
+          } finally {
+            setIsTranscribing(false);
+          }
+        }
+
+        finalContent = `קידום פרק פודקאסט\n\nתמלול:\n${transcript}`;
+      } else {
+        // Check if user actually filled in data
+        const hasInput = Object.values(templateFields).some(v => v.trim().length > 0);
+        if (!hasInput) {
+          setError('אנא הזינו תוכן לפני היצירה.');
+          return;
+        }
+        finalContent = template.buildContent(templateFields);
       }
-      finalContent = template.buildContent(templateFields);
     }
 
     if (!finalContent.trim()) {
@@ -136,7 +208,7 @@ ${request ? `Additional instructions: ${request}` : ''}`;
     } finally {
       setIsGenerating(false);
     }
-  }, [content, request, format, getSelectedTone, selectedTemplate, templateFields]);
+  }, [content, request, format, getSelectedTone, selectedTemplate, templateFields, inputMode, youtubeUrl, transcribedText]);
 
   const handleRegenerate = useCallback(() => {
     handleGenerate();
@@ -158,6 +230,9 @@ ${request ? `Additional instructions: ${request}` : ''}`;
     setCustomTone('');
     setSelectedTemplate(null);
     setTemplateFields({});
+    setYoutubeUrl('');
+    setTranscribedText('');
+    setInputMode('transcript');
   };
 
   const handleSelectTemplate = (index: number) => {
@@ -274,7 +349,73 @@ ${request ? `Additional instructions: ${request}` : ''}`;
         {selectedTemplate !== null && (
           <div className="flex flex-col gap-3 bg-cp-sand/30 border border-cp-line/50 rounded-xl p-4">
             <span className="text-[10px] uppercase text-cp-clay font-bold tracking-wider">{TEMPLATES[selectedTemplate].label}</span>
-            {TEMPLATES[selectedTemplate].fields.map(field => (
+            
+            {/* YouTube URL toggle — only for podcast template (index 0) */}
+            {selectedTemplate === 0 && (
+              <>
+                <div className="flex p-1 bg-cp-sand rounded-lg border border-cp-line">
+                  <button
+                    type="button"
+                    onClick={() => setInputMode('transcript')}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded transition cursor-pointer ${
+                      inputMode === 'transcript'
+                        ? 'bg-cp-paper text-cp-clay border border-cp-line font-bold shadow-sm'
+                        : 'text-cp-ink-2 hover:text-cp-ink'
+                    }`}
+                  >
+                    הדבק תמלול
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInputMode('url')}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded transition cursor-pointer flex items-center justify-center gap-1 ${
+                      inputMode === 'url'
+                        ? 'bg-cp-paper text-cp-clay border border-cp-line font-bold shadow-sm'
+                        : 'text-cp-ink-2 hover:text-cp-ink'
+                    }`}
+                  >
+                    <Link className="w-3.5 h-3.5" />
+                    קישור YouTube
+                  </button>
+                </div>
+
+                {inputMode === 'url' ? (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] text-cp-ink-2 font-semibold">קישור לפרק</label>
+                    <input
+                      type="url"
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 transition"
+                      dir="ltr"
+                    />
+                    {transcribedText && (
+                      <p className="text-[10px] text-cp-sage font-semibold">✓ תמלול מוכן — {transcribedText.split(/\s+/).length} מילים</p>
+                    )}
+                    {isTranscribing && (
+                      <p className="text-[10px] text-cp-clay font-semibold flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> מתמלל...
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] text-cp-ink-2 font-semibold">תמלול הפרק</label>
+                    <textarea
+                      value={templateFields['transcript'] || ''}
+                      onChange={(e) => updateTemplateField('transcript', e.target.value)}
+                      placeholder="הדביקו כאן את תמלול הפרק (או חלק ממנו)..."
+                      rows={8}
+                      className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 transition resize-y min-h-[120px]"
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Regular template fields for non-podcast templates */}
+            {selectedTemplate !== 0 && TEMPLATES[selectedTemplate].fields.map(field => (
               <div key={field.key} className="flex flex-col gap-1">
                 <label className="text-[10px] text-cp-ink-2 font-semibold">{field.label}</label>
                 {(field as any).multiline ? (
