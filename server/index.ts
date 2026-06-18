@@ -26,7 +26,7 @@ app.use(express.json({ limit: '1mb' }));
 
 // Serve static frontend in production
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(join(import.meta.dirname || '.', '..', 'dist')));
+  app.use(express.static(join(process.cwd(), 'dist')));
 }
 
 // CORS — restrict in production, allow in dev
@@ -506,7 +506,7 @@ app.post('/api/cut-clip', async (req, res) => {
 // Serve SPA in production — catch-all for client-side routing
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (_req, res) => {
-    res.sendFile(join(import.meta.dirname || '.', '..', 'dist', 'index.html'));
+    res.sendFile(join(process.cwd(), 'dist', 'index.html'));
   });
 }
 
