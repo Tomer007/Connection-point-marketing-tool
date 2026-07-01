@@ -168,9 +168,9 @@ export async function runViralExtractionPipeline(
         throw new Error('לא התקבל תמלול תקין מהשרת.');
       }
 
-    } catch (err: any) {
-      onStep(1, 'error', `תמלול השמע נכשל: ${err.message || err}`);
-      throw new Error(`שגיאה בתמלול השמע: ${err.message || err}`);
+    } catch (err: unknown) {
+      onStep(1, 'error', `תמלול השמע נכשל: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`שגיאה בתמלול השמע: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -478,8 +478,8 @@ RULE 11: Always keep the warm, contained, professional tone of נקודת חיב
     }
 
     onStep(2, 'done', `אותרו בהצלחה ${rawCuts.length} קטעים מבטיחים. מכין לתיקוף מדדים.`, { rawCuts, podcastName, episodeName });
-  } catch (err: any) {
-    onStep(2, 'error', `חילוץ הקטעים נכשל: ${err.message || err}`);
+  } catch (err: unknown) {
+    onStep(2, 'error', `חילוץ הקטעים נכשל: ${err instanceof Error ? err.message : String(err)}`);
     throw err;
   }
   }
@@ -552,8 +552,8 @@ All Hebrew properties must remain fluent natural Hebrew.`;
     });
 
     onStep(3, 'done', 'התיקוף והערכת המדדים הושלמו בהצלחה. פרמטרי אופטימיזציה מותאמים אישית נטענו.', { validatedCuts, podcastName, episodeName });
-  } catch (err: any) {
-    onStep(3, 'error', `תיקוף הקטעים נכשל: ${err.message || err}`);
+  } catch (err: unknown) {
+    onStep(3, 'error', `תיקוף הקטעים נכשל: ${err instanceof Error ? err.message : String(err)}`);
     throw err;
   }
   }
@@ -573,8 +573,8 @@ All Hebrew properties must remain fluent natural Hebrew.`;
     // Brief pause for UI to update
     await new Promise((resolve) => setTimeout(resolve, 300));
     onStep(4, 'done', 'הציונים נורמלו והקטעים דורגו לפי פוטנציאל ההצלחה.');
-  } catch (err: any) {
-    onStep(4, 'error', `דירוג הקטעים נכשל: ${err.message || err}`);
+  } catch (err: unknown) {
+    onStep(4, 'error', `דירוג הקטעים נכשל: ${err instanceof Error ? err.message : String(err)}`);
     throw err;
   }
 
@@ -585,8 +585,8 @@ All Hebrew properties must remain fluent natural Hebrew.`;
   try {
     await new Promise((resolve) => setTimeout(resolve, 300));
     onStep(5, 'done', 'קובץ הדו"ח הורכב בהצלחה. מערכת חילוץ הלהיטים זמינה במלואה!');
-  } catch (err: any) {
-    onStep(5, 'error', `בניית הדו"ח נכשלה: ${err.message || err}`);
+  } catch (err: unknown) {
+    onStep(5, 'error', `בניית הדו"ח נכשלה: ${err instanceof Error ? err.message : String(err)}`);
     throw err;
   }
 

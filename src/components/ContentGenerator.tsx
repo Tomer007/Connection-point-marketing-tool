@@ -4,6 +4,7 @@ import { copyToClipboard } from '../utils/helpers';
 import { generateContentServer } from '../utils/api';
 import { CONTENT_GENERATOR_PROMPT } from '../utils/prompts';
 import { STORAGE_KEYS, CACHE_TTL_MS } from '../constants';
+import { getSavedTranscripts, getCachedTranscript } from '../utils/transcription';
 import Markdown from 'react-markdown';
 
 type ContentFormat = 'reels' | 'instagram' | 'email';
@@ -409,6 +410,32 @@ ${request ? `Additional instructions: ${request}` : ''}`;
                       rows={8}
                       className="w-full bg-cp-bone border border-cp-line rounded-lg px-3 py-2 text-sm text-cp-ink focus:outline-none focus:border-cp-clay placeholder:text-cp-ink-3/65 transition resize-y min-h-[120px]"
                     />
+                    {/* Saved Transcriptions Picker */}
+                    {!templateFields['transcript'] && (() => {
+                      const saved = getSavedTranscripts();
+                      if (saved.length === 0) return null;
+                      return (
+                        <div className="flex flex-col gap-1.5 mt-1">
+                          <span className="text-[10px] uppercase text-cp-ink-3 font-semibold tracking-wider">או בחרו תמלול שמור</span>
+                          <div className="flex flex-col gap-1 max-h-[120px] overflow-y-auto">
+                            {saved.map((item) => (
+                              <button
+                                key={item.cacheKey}
+                                type="button"
+                                onClick={() => {
+                                  const cached = getCachedTranscript(item.cacheKey);
+                                  if (cached) updateTemplateField('transcript', cached);
+                                }}
+                                className="text-right text-[11px] px-3 py-2 rounded-lg border border-cp-line bg-cp-bone hover:border-cp-clay/40 hover:bg-cp-sand transition cursor-pointer flex items-center justify-between gap-2"
+                              >
+                                <span className="text-cp-ink truncate">{item.label}</span>
+                                <span className="text-cp-ink-3 shrink-0">{item.wordCount} מילים</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </>

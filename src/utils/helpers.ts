@@ -94,3 +94,11 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     }
   }
 }
+
+
+/**
+ * Count words in a text string.
+ */
+export function wordCount(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}

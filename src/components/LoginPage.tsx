@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
-import logoImg from '../assets/images/anna_yael_logo_1780130406427.png';
+import logoImg from '../assets/images/annayael_logo.png';
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -46,14 +46,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <div className="w-full max-w-sm">
         {/* Logo & Brand */}
         <div className="text-center mb-8">
-          <img
-            src={logoImg}
-            alt="Connection Point Logo"
-            className="w-20 h-20 rounded-full border border-cp-line object-cover shadow-lg mx-auto mb-4"
-          />
-          <h1 className="text-2xl font-serif font-semibold text-cp-clay">Connection Point</h1>
-          <p className="text-xs text-cp-ink-3 uppercase tracking-widest mt-1">
-            אנה ויעל | נקודת חיבור
+          <a href="https://annayael.com/" target="_blank" rel="noopener" className="inline-block transition-transform duration-300 hover:scale-110 hover:rotate-2">
+            <img
+              src={logoImg}
+              alt="נקודת חיבור"
+              className="w-28 h-auto mx-auto mb-5 drop-shadow-md"
+            />
+          </a>
+          <h1 className="text-2xl font-serif font-semibold text-cp-clay">Content Studio</h1>
+          <p className="text-xs text-cp-ink-3 tracking-widest mt-1">
+            אנה ויעל · נקודת חיבור
           </p>
         </div>
 

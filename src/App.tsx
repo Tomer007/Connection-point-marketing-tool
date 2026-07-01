@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import logoImg from './assets/images/anna_yael_logo_1780130406427.png';
+import logoImg from './assets/images/annayael_logo.png';
 import {
   Sparkles,
   CheckCircle2,
@@ -20,17 +20,18 @@ import { generateHtmlReport } from './utils/reportGenerator';
 import { PipelineStep, PipelineResult, RecoveryData, CachedReport, StepIntermediateData } from './types';
 import { STORAGE_KEYS, CACHE_TTL_MS, DEFAULT_PODCAST_NAME, INITIAL_STEPS, URL_PLACEHOLDERS } from './constants';
 import { imageToBase64, downloadBlob, formatHebrewDate } from './utils/helpers';
+import { getSavedTranscripts, getCachedTranscript } from './utils/transcription';
 import { TranscriptModal } from './components/TranscriptModal';
 import { PipelineProgress } from './components/PipelineProgress';
 import { ViralCutCard } from './components/ViralCutCard';
 import { ContentGenerator } from './components/ContentGenerator';
 import { LoginPage } from './components/LoginPage';
-import { PodcastDescription } from './components/PodcastDescription';
+import { EpisodeNameGenerator } from './components/EpisodeNameGenerator';
 import { WhatsAppButton } from './components/WhatsAppButton';
 import { Tooltip } from './components/Tooltip';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-type AppTab = 'podcast2reels' | 'content-generator' | 'podcast-description';
+type AppTab = 'podcast2reels' | 'content-generator' | 'episode-name-generator';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('cp_auth') === 'true');
@@ -475,14 +476,16 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img
-                src={logoImg}
-                alt="Connection Point Logo"
-                className="w-10 h-10 rounded-full border border-cp-line object-cover shadow-md"
-                referrerPolicy="no-referrer"
-              />
+              <a href="https://annayael.com/" target="_blank" rel="noopener" className="transition-transform duration-200 hover:scale-110">
+                <img
+                  src={logoImg}
+                  alt="נקודת חיבור"
+                  className="w-9 h-auto"
+                  referrerPolicy="no-referrer"
+                />
+              </a>
               <div>
-                <h1 className="text-2xl font-serif font-semibold text-cp-clay tracking-tight">Connection Point</h1>
+                <h1 className="text-2xl font-serif font-semibold text-cp-clay tracking-tight">Content Studio</h1>
                 <p className="text-[10px] text-cp-ink-3 uppercase tracking-widest">
                   אנה ויעל <span className="text-cp-line mx-1">|</span> נקודת חיבור
                 </p>
@@ -523,8 +526,7 @@ export default function App() {
               }`}
             >
               <Scissors className="w-3.5 h-3.5" />
-              <span>Podcast 2 Reels</span>
-              <span className="text-[9px] opacity-60">| חילוץ קטעים</span>
+              <span>חילוץ קטעים ויראליים</span>
             </button>
             <button
               role="tab"
@@ -537,22 +539,20 @@ export default function App() {
               }`}
             >
               <PenTool className="w-3.5 h-3.5" />
-              <span>Content Generator</span>
-              <span className="text-[9px] opacity-60">| יצירת תוכן</span>
+              <span>יצירת תוכן שיווקי</span>
             </button>
             <button
               role="tab"
-              aria-selected={appTab === 'podcast-description'}
-              onClick={() => setAppTab('podcast-description')}
+              aria-selected={appTab === 'episode-name-generator'}
+              onClick={() => setAppTab('episode-name-generator')}
               className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-t-lg transition cursor-pointer border-b-2 ${
-                appTab === 'podcast-description'
+                appTab === 'episode-name-generator'
                   ? 'border-cp-clay text-cp-clay bg-cp-paper'
                   : 'border-transparent text-cp-ink-3 hover:text-cp-ink-2'
               }`}
             >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Podcast Description</span>
-              <span className="text-[9px] opacity-60">| תיאור פרק</span>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>שם ותיאור לפרק</span>
             </button>
           </nav>
         </div>
@@ -565,9 +565,9 @@ export default function App() {
           <ErrorBoundary><ContentGenerator /></ErrorBoundary>
         </div>
 
-        {/* Podcast Description Tab */}
-        <div className={appTab === 'podcast-description' ? '' : 'hidden'}>
-          <ErrorBoundary><PodcastDescription /></ErrorBoundary>
+        {/* Episode Name Generator Tab */}
+        <div className={appTab === 'episode-name-generator' ? '' : 'hidden'}>
+          <ErrorBoundary><EpisodeNameGenerator /></ErrorBoundary>
         </div>
 
         {/* Podcast 2 Reels Tab — always mounted, hidden when inactive */}
@@ -598,7 +598,7 @@ export default function App() {
         {/* Intro */}
         <div className="text-center max-w-2xl mx-auto mb-2">
           <h2 className="text-3xl sm:text-4xl font-serif text-cp-ink font-bold tracking-tight mb-2">
-            Podcast 2 Reels
+            חילוץ קטעים ויראליים
           </h2>
         </div>
 
@@ -612,7 +612,7 @@ export default function App() {
             >
               <h3 className="text-lg font-bold text-cp-ink font-serif flex items-center gap-2">
                 <Video className="w-5 h-5 text-cp-clay" />
-                <span>הגדרות מקור ומדיה</span>
+                <span>מקור השמע</span>
               </h3>
 
               {/* Platform Tabs */}
@@ -694,10 +694,39 @@ export default function App() {
                         <div className="flex flex-col items-center gap-2">
                           <span className="text-2xl">🎵</span>
                           <span className="text-xs text-cp-ink-2 font-medium">לחצו להעלאת קובץ שמע</span>
-                          <span className="text-[10px] text-cp-ink-3">MP3, WAV, M4A, OGG, FLAC (עד 100MB)</span>
+                          <span className="text-[10px] text-cp-ink-3">MP3, WAV, M4A, OGG, FLAC</span>
                         </div>
                       )}
                     </div>
+                    {/* Saved Transcriptions Picker */}
+                    {(() => {
+                      const saved = getSavedTranscripts();
+                      if (saved.length === 0) return null;
+                      return (
+                        <div className="flex flex-col gap-1.5 mt-1">
+                          <span className="text-[10px] uppercase text-cp-ink-3 font-semibold tracking-wider">או בחרו תמלול שמור</span>
+                          <div className="flex flex-col gap-1 max-h-[140px] overflow-y-auto">
+                            {saved.map((item) => (
+                              <button
+                                key={item.cacheKey}
+                                type="button"
+                                onClick={() => {
+                                  const cached = getCachedTranscript(item.cacheKey);
+                                  if (cached) {
+                                    setPastedTranscript(cached);
+                                    setActiveTab('transcript');
+                                  }
+                                }}
+                                className="text-right text-[11px] px-3 py-2 rounded-lg border border-cp-line bg-cp-bone hover:border-cp-clay/40 hover:bg-cp-sand transition cursor-pointer flex items-center justify-between gap-2"
+                              >
+                                <span className="text-cp-ink truncate">{item.label}</span>
+                                <span className="text-cp-ink-3 shrink-0">{item.wordCount} מילים</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </>
                 ) : (
                   <>
@@ -800,9 +829,9 @@ export default function App() {
                 className="w-full bg-cp-clay hover:bg-cp-clay-deep text-white font-semibold py-3 px-4 rounded-full transition-all flex items-center justify-center space-x-2 text-sm disabled:opacity-50 cursor-pointer shadow-md hover:shadow-lg active:scale-98"
               >
                 {isProcessing ? (
-                  <><Loader2 className="w-5 h-5 animate-spin text-white" /><span>מחלץ קטעים...</span></>
+                  <><Loader2 className="w-5 h-5 animate-spin text-white" /><span>מעבד...</span></>
                 ) : (
-                  <><Sparkles className="w-5 h-5 text-cp-cream" /><span>חלץ קטעים ויראליים</span></>
+                  <><Sparkles className="w-5 h-5 text-cp-cream" /><span>הפק קטעים</span></>
                 )}
               </button>
 
@@ -920,7 +949,7 @@ export default function App() {
                     className="flex-1 py-3.5 border-2 border-cp-line bg-transparent hover:bg-cp-sand text-cp-ink-2 hover:text-cp-ink font-bold uppercase tracking-widest text-xs rounded-full flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
                     <RotateCcw className="w-4 h-4" />
-                    <span>חלץ קישור חדש</span>
+                    <span>התחל מחדש</span>
                   </button>
                 </div>
               </div>
@@ -936,15 +965,15 @@ export default function App() {
                 <div className="mt-4 flex flex-col gap-3 text-right max-w-sm mx-auto" dir="rtl">
                   <div className="flex items-center gap-3">
                     <span className="w-6 h-6 rounded-full bg-cp-clay text-white text-xs font-bold flex items-center justify-center shrink-0">1</span>
-                    <span className="text-xs text-cp-ink-2">הדביקו קישור לפרק פודקאסט (YouTube / Spotify / Drive)</span>
+                    <span className="text-xs text-cp-ink-2">בחרו מקור: קישור YouTube, Google Drive, קובץ שמע, או תמלול</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="w-6 h-6 rounded-full bg-cp-clay text-white text-xs font-bold flex items-center justify-center shrink-0">2</span>
-                    <span className="text-xs text-cp-ink-2">לחצו "חלץ קטעים ויראליים" והמתינו ~1-2 דקות</span>
+                    <span className="text-xs text-cp-ink-2">לחצו "הפק קטעים" והמתינו 1-2 דקות</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="w-6 h-6 rounded-full bg-cp-clay text-white text-xs font-bold flex items-center justify-center shrink-0">3</span>
-                    <span className="text-xs text-cp-ink-2">קבלו 4 קטעים מדורגים מוכנים לפרסום ברילס</span>
+                    <span className="text-xs text-cp-ink-2">קבלו קטעים מדורגים מוכנים לפרסום ברילס</span>
                   </div>
                 </div>
               </div>
@@ -968,7 +997,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-cp-line bg-cp-sand/50 py-6 text-center text-xs text-cp-ink-3 mt-auto px-4">
         <div className="max-w-6xl mx-auto">
-          <p>אנה ויעל | נקודת חיבור</p>
+          <p>Connection Point Content Studio</p>
         </div>
       </footer>
 

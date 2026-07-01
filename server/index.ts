@@ -257,6 +257,8 @@ async function transcribeWithWhisper(audioBuffer: Buffer): Promise<unknown> {
   formData.append('file', new Blob([finalBuffer], { type: 'audio/mpeg' }), 'audio.mp3');
   formData.append('model', 'whisper-1');
   formData.append('response_format', 'verbose_json');
+  formData.append('language', 'he');
+  formData.append('prompt', 'זהו פודקאסט בעברית בשם "זה כבר קרה" עם אנה בן יהודה ויעל רפפורט מנקודת חיבור. נושאים: גוף, רגש, תודעה, אנרגיה, ריפוי, שחרור דפוסים.');
 
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -298,8 +300,8 @@ async function compressAudio(inputBuffer: Buffer): Promise<Buffer> {
   }
 }
 
-// File upload config (max 100MB)
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+// File upload config (no size limit — server compresses before sending to Whisper)
+const upload = multer({ storage: multer.memoryStorage() });
 
 // --- Helper: Fetch YouTube captions/subtitles directly ---
 async function fetchYouTubeCaptions(url: string): Promise<string | null> {
@@ -400,7 +402,7 @@ app.post('/api/transcribe-file', (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        res.status(413).json({ error: 'הקובץ גדול מדי. הגודל המקסימלי הוא 100MB.' });
+        res.status(413).json({ error: 'הקובץ גדול מדי.' });
         return;
       }
       res.status(400).json({ error: `שגיאה בהעלאת הקובץ: ${err.message}` });
